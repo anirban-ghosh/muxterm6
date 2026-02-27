@@ -1,0 +1,9 @@
+export const DEFAULT_COLS = 80
+export const DEFAULT_ROWS = 24
+export const MIN_SPLIT_RATIO = 0.1
+export const MAX_SPLIT_RATIO = 0.9
+export const SPLIT_DIVIDER_SIZE = 1
+export const SPLIT_DIVIDER_HOVER_SIZE = 4
+export const TAB_HEIGHT = 32
+export const TITLEBAR_HEIGHT = 40
+export const STATUSBAR_HEIGHT = 24

@@ -1,0 +1,22 @@
+appId: com.muxterm.app
+productName: MuxTerm
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**/*
+  - "!node_modules/**/*"
+asarUnpack:
+  - "**/*.node"
+mac:
+  target:
+    - dmg
+    - zip
+  artifactName: ${name}-${version}-${arch}.${ext}
+  entitlementsInherit: resources/entitlements.mac.plist
+linux:
+  target:
+    - AppImage
+    - deb
+  artifactName: ${name}-${version}-${arch}.${ext}
+  category: TerminalEmulator
