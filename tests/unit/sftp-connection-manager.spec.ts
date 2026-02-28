@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Use vi.hoisted to ensure mock fns exist before vi.mock factories run
 const {
   mockConnect, mockEnd, mockList, mockRename, mockDelete,
-  mockRmdir, mockMkdir, mockExists, mockCwd,
+  mockRmdir, mockMkdir, mockExists, mockCwd, mockStat,
   mockReadFile, mockSend, mockFromId, mockOnce
 } = vi.hoisted(() => ({
   mockConnect: vi.fn(),
@@ -15,6 +15,7 @@ const {
   mockMkdir: vi.fn(),
   mockExists: vi.fn(),
   mockCwd: vi.fn(),
+  mockStat: vi.fn(),
   mockReadFile: vi.fn(),
   mockSend: vi.fn(),
   mockFromId: vi.fn(),
@@ -31,7 +32,8 @@ vi.mock('ssh2-sftp-client', () => ({
     rmdir: mockRmdir,
     mkdir: mockMkdir,
     exists: mockExists,
-    cwd: mockCwd
+    cwd: mockCwd,
+    stat: mockStat
   }))
 }))
 
@@ -162,6 +164,68 @@ describe('SftpConnectionManager', () => {
       expect(entries[1].isDirectory).toBe(false)
 
       await sftpConnectionManager.disconnect(20)
+    })
+
+    it('should resolve symlinks via stat to determine isDirectory', async () => {
+      await sftpConnectionManager.connect(21, defaultConfig)
+
+      mockList.mockResolvedValue([
+        {
+          name: 'link-to-dir',
+          type: 'l',
+          size: 11,
+          modifyTime: 3000,
+          rights: { user: 'rwx', group: 'r-x', other: 'r-x' }
+        },
+        {
+          name: 'link-to-file',
+          type: 'l',
+          size: 22,
+          modifyTime: 4000,
+          rights: { user: 'rw-', group: 'r--', other: 'r--' }
+        }
+      ])
+
+      mockStat.mockImplementation((path: string) => {
+        if (path === '/home/link-to-dir') {
+          return Promise.resolve({ isDirectory: true })
+        }
+        return Promise.resolve({ isDirectory: false })
+      })
+
+      const entries = await sftpConnectionManager.list(21, '/home')
+      expect(entries).toHaveLength(2)
+      // Symlink to dir should be sorted first
+      expect(entries[0].name).toBe('link-to-dir')
+      expect(entries[0].isDirectory).toBe(true)
+      expect(entries[1].name).toBe('link-to-file')
+      expect(entries[1].isDirectory).toBe(false)
+      expect(mockStat).toHaveBeenCalledTimes(2)
+
+      await sftpConnectionManager.disconnect(21)
+    })
+
+    it('should treat broken symlinks as files', async () => {
+      await sftpConnectionManager.connect(22, defaultConfig)
+
+      mockList.mockResolvedValue([
+        {
+          name: 'broken-link',
+          type: 'l',
+          size: 0,
+          modifyTime: 5000,
+          rights: { user: 'rwx', group: 'r-x', other: 'r-x' }
+        }
+      ])
+
+      mockStat.mockRejectedValue(new Error('No such file'))
+
+      const entries = await sftpConnectionManager.list(22, '/home')
+      expect(entries).toHaveLength(1)
+      expect(entries[0].name).toBe('broken-link')
+      expect(entries[0].isDirectory).toBe(false)
+
+      await sftpConnectionManager.disconnect(22)
     })
   })
 

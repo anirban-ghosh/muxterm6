@@ -1,5 +1,8 @@
-import React, { useCallback, useRef } from 'react'
+import React, { useCallback, useRef, useState, useMemo, useEffect } from 'react'
 import type { FileEntry } from '@shared/sftp-types'
+
+type SortColumn = 'name' | 'size' | 'date' | 'perms'
+type SortDirection = 'asc' | 'desc'
 
 interface FileBrowserProps {
   files: FileEntry[]
@@ -12,6 +15,13 @@ interface FileBrowserProps {
   onDrop: (targetPath: string) => void
   side: 'local' | 'remote'
   currentPath: string
+  onContextCut?: () => void
+  onContextCopy?: () => void
+  onContextPaste?: () => void
+  onContextDelete?: () => void
+  onContextSendTo?: () => void
+  clipboardHasContent?: boolean
+  connected?: boolean
 }
 
 function formatSize(bytes: number): string {
@@ -43,9 +53,86 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
   onDragStart,
   onDrop,
   side,
-  currentPath
+  currentPath,
+  onContextCut,
+  onContextCopy,
+  onContextPaste,
+  onContextDelete,
+  onContextSendTo,
+  clipboardHasContent = false,
+  connected = false
 }) => {
   const lastClickIndex = useRef<number>(-1)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [sortColumn, setSortColumn] = useState<SortColumn>('name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Sort files: dirs always first, then by selected column
+  const sortedFiles = useMemo(() => {
+    const sorted = [...files]
+    sorted.sort((a, b) => {
+      // Directories always first
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+
+      let cmp = 0
+      switch (sortColumn) {
+        case 'name':
+          cmp = a.name.localeCompare(b.name)
+          break
+        case 'size':
+          cmp = a.size - b.size
+          break
+        case 'date':
+          cmp = a.modifiedAt - b.modifiedAt
+          break
+        case 'perms':
+          cmp = a.permissions.localeCompare(b.permissions)
+          break
+      }
+
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [files, sortColumn, sortDirection])
+
+  const handleColumnClick = useCallback((col: SortColumn) => {
+    setSortColumn((prev) => {
+      if (prev === col) {
+        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+        return prev
+      }
+      setSortDirection('asc')
+      return col
+    })
+  }, [])
+
+  const sortIndicator = useCallback(
+    (col: SortColumn) => {
+      if (sortColumn !== col) return null
+      return sortDirection === 'asc' ? ' \u25B2' : ' \u25BC'
+    },
+    [sortColumn, sortDirection]
+  )
+
+  // Close context menu on click outside, scroll, or Escape
+  useEffect(() => {
+    if (!contextMenu) return
+
+    const close = () => setContextMenu(null)
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+
+    document.addEventListener('click', close)
+    document.addEventListener('scroll', close, true)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('click', close)
+      document.removeEventListener('scroll', close, true)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [contextMenu])
 
   const handleClick = useCallback(
     (entry: FileEntry, index: number, e: React.MouseEvent) => {
@@ -64,7 +151,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
         const end = Math.max(lastClickIndex.current, index)
         const next = new Set(selection)
         for (let i = start; i <= end; i++) {
-          next.add(files[i].path)
+          next.add(sortedFiles[i].path)
         }
         onSelectionChange(next)
       } else {
@@ -73,7 +160,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
 
       lastClickIndex.current = index
     },
-    [files, selection, onSelectionChange]
+    [sortedFiles, selection, onSelectionChange]
   )
 
   const handleDoubleClick = useCallback(
@@ -90,14 +177,14 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
   const handleDragStart = useCallback(
     (e: React.DragEvent, entry: FileEntry) => {
       const selected = selection.has(entry.path)
-        ? files.filter((f) => selection.has(f.path))
+        ? sortedFiles.filter((f) => selection.has(f.path))
         : [entry]
       e.dataTransfer.setData('text/plain', JSON.stringify(selected.map((f) => f.path)))
       e.dataTransfer.setData('application/x-sftp-side', side)
       e.dataTransfer.effectAllowed = 'copyMove'
       onDragStart(selected, side)
     },
-    [files, selection, side, onDragStart]
+    [sortedFiles, selection, side, onDragStart]
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -118,11 +205,36 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
       const meta = e.metaKey || e.ctrlKey
       if (meta && e.key === 'a') {
         e.preventDefault()
-        onSelectionChange(new Set(files.map((f) => f.path)))
+        onSelectionChange(new Set(sortedFiles.map((f) => f.path)))
       }
     },
-    [files, onSelectionChange]
+    [sortedFiles, onSelectionChange]
   )
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, entry: FileEntry) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      // If right-clicked entry is not in selection, select it exclusively
+      if (!selection.has(entry.path)) {
+        onSelectionChange(new Set([entry.path]))
+      }
+
+      setContextMenu({ x: e.clientX, y: e.clientY })
+    },
+    [selection, onSelectionChange]
+  )
+
+  const handleContextMenuAction = useCallback(
+    (action: () => void | undefined) => {
+      setContextMenu(null)
+      action?.()
+    },
+    []
+  )
+
+  const otherSide = side === 'local' ? 'Remote' : 'Local'
 
   return (
     <div
@@ -133,12 +245,32 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
       tabIndex={0}
     >
       <div className="sftp-file-browser__header">
-        <span className="sftp-file-browser__col sftp-file-browser__col--name">Name</span>
-        <span className="sftp-file-browser__col sftp-file-browser__col--size">Size</span>
-        <span className="sftp-file-browser__col sftp-file-browser__col--date">Modified</span>
-        <span className="sftp-file-browser__col sftp-file-browser__col--perms">Perms</span>
+        <span
+          className="sftp-file-browser__col sftp-file-browser__col--name sftp-file-browser__col--sortable"
+          onClick={() => handleColumnClick('name')}
+        >
+          Name{sortIndicator('name')}
+        </span>
+        <span
+          className="sftp-file-browser__col sftp-file-browser__col--size sftp-file-browser__col--sortable"
+          onClick={() => handleColumnClick('size')}
+        >
+          Size{sortIndicator('size')}
+        </span>
+        <span
+          className="sftp-file-browser__col sftp-file-browser__col--date sftp-file-browser__col--sortable"
+          onClick={() => handleColumnClick('date')}
+        >
+          Modified{sortIndicator('date')}
+        </span>
+        <span
+          className="sftp-file-browser__col sftp-file-browser__col--perms sftp-file-browser__col--sortable"
+          onClick={() => handleColumnClick('perms')}
+        >
+          Perms{sortIndicator('perms')}
+        </span>
       </div>
-      <div className="sftp-file-browser__list">
+      <div className="sftp-file-browser__list" ref={listRef}>
         {loading ? (
           <div className="sftp-file-browser__loading">Loading...</div>
         ) : (
@@ -157,12 +289,13 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
                 <span className="sftp-file-browser__col sftp-file-browser__col--perms">--</span>
               </div>
             )}
-            {files.map((entry, index) => (
+            {sortedFiles.map((entry, index) => (
               <div
                 key={entry.path}
                 className={`sftp-file-browser__row ${selection.has(entry.path) ? 'sftp-file-browser__row--selected' : ''}`}
                 onClick={(e) => handleClick(entry, index, e)}
                 onDoubleClick={() => handleDoubleClick(entry)}
+                onContextMenu={(e) => handleContextMenu(e, entry)}
                 draggable
                 onDragStart={(e) => handleDragStart(e, entry)}
               >
@@ -183,12 +316,66 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
                 </span>
               </div>
             ))}
-            {files.length === 0 && !loading && (
+            {sortedFiles.length === 0 && !loading && (
               <div className="sftp-file-browser__empty">Empty directory</div>
             )}
           </>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="sftp-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onContextCut && (
+            <div
+              className="sftp-context-menu__item"
+              onClick={() => handleContextMenuAction(onContextCut)}
+            >
+              Cut
+            </div>
+          )}
+          {onContextCopy && (
+            <div
+              className="sftp-context-menu__item"
+              onClick={() => handleContextMenuAction(onContextCopy)}
+            >
+              Copy
+            </div>
+          )}
+          {onContextPaste && (
+            <div
+              className={`sftp-context-menu__item ${!clipboardHasContent ? 'sftp-context-menu__item--disabled' : ''}`}
+              onClick={() => clipboardHasContent && handleContextMenuAction(onContextPaste)}
+            >
+              Paste
+            </div>
+          )}
+          {(onContextCut || onContextCopy || onContextPaste) &&
+            (onContextDelete || (onContextSendTo && connected)) && (
+              <div className="sftp-context-menu__separator" />
+            )}
+          {onContextDelete && (
+            <div
+              className="sftp-context-menu__item sftp-context-menu__item--danger"
+              onClick={() => handleContextMenuAction(onContextDelete)}
+            >
+              Delete
+            </div>
+          )}
+          {onContextSendTo && connected && (
+            <div
+              className="sftp-context-menu__item"
+              onClick={() => handleContextMenuAction(onContextSendTo)}
+            >
+              Send to {otherSide}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

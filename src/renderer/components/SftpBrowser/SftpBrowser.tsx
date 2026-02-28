@@ -259,16 +259,157 @@ export const SftpBrowser: React.FC = () => {
     [loadRemoteFiles]
   )
 
-  // Clipboard operations
+  // Context menu handlers
+  const handleContextCut = useCallback(
+    (side: 'local' | 'remote') => {
+      const s = useSftpStore.getState()
+      const sel = side === 'local' ? s.localSelection : s.remoteSelection
+      const files = side === 'local' ? s.localFiles : s.remoteFiles
+      const selected = files.filter((f) => sel.has(f.path))
+      if (selected.length === 0) return
+      s.setClipboard({ files: selected, operation: 'cut', source: side })
+    },
+    []
+  )
+
+  const handleContextCopy = useCallback(
+    (side: 'local' | 'remote') => {
+      const s = useSftpStore.getState()
+      const sel = side === 'local' ? s.localSelection : s.remoteSelection
+      const files = side === 'local' ? s.localFiles : s.remoteFiles
+      const selected = files.filter((f) => sel.has(f.path))
+      if (selected.length === 0) return
+      s.setClipboard({ files: selected, operation: 'copy', source: side })
+    },
+    []
+  )
+
+  const handleContextPaste = useCallback(
+    (targetSide: 'local' | 'remote') => {
+      const s = useSftpStore.getState()
+      if (!s.clipboard) return
+
+      const targetPath = targetSide === 'local' ? s.localPath : s.remotePath
+      const { files, operation, source } = s.clipboard
+
+      for (const entry of files) {
+        const destPath = targetPath + '/' + entry.name
+
+        if (source === targetSide) {
+          if (targetSide === 'local') {
+            if (operation === 'cut') {
+              window.sftpAPI.localRename(entry.path, destPath)
+            } else {
+              window.sftpAPI.localCopy(entry.path, destPath)
+            }
+          } else {
+            if (operation === 'cut') {
+              window.sftpAPI.remoteRename(entry.path, destPath)
+            }
+          }
+        } else {
+          const transferId = nextTransferId()
+          window.sftpAPI.transferStart({
+            transferId,
+            sourcePath: entry.path,
+            destPath,
+            direction: source === 'local' ? 'upload' : 'download',
+            isDirectory: entry.isDirectory
+          })
+        }
+      }
+
+      if (operation === 'cut') {
+        s.setClipboard(null)
+      }
+    },
+    []
+  )
+
+  const handleContextDelete = useCallback(
+    async (side: 'local' | 'remote') => {
+      const s = useSftpStore.getState()
+      const sel = side === 'local' ? s.localSelection : s.remoteSelection
+      const files = side === 'local' ? s.localFiles : s.remoteFiles
+      const selected = files.filter((f) => sel.has(f.path))
+      if (selected.length === 0) return
+
+      for (const entry of selected) {
+        try {
+          if (side === 'local') {
+            await window.sftpAPI.localDelete(entry.path, entry.isDirectory)
+          } else {
+            await window.sftpAPI.remoteDelete(entry.path, entry.isDirectory)
+          }
+        } catch (err) {
+          console.error('Delete failed:', err)
+        }
+      }
+
+      // Refresh and clear selection
+      if (side === 'local') {
+        s.setLocalSelection(new Set())
+        loadLocalFiles(s.localPath)
+      } else {
+        s.setRemoteSelection(new Set())
+        loadRemoteFiles(s.remotePath)
+      }
+    },
+    [loadLocalFiles, loadRemoteFiles]
+  )
+
+  const handleContextSendTo = useCallback(
+    (side: 'local' | 'remote') => {
+      const s = useSftpStore.getState()
+      const sel = side === 'local' ? s.localSelection : s.remoteSelection
+      const files = side === 'local' ? s.localFiles : s.remoteFiles
+      const selected = files.filter((f) => sel.has(f.path))
+      if (selected.length === 0) return
+
+      const targetPath = side === 'local' ? s.remotePath : s.localPath
+      const direction = side === 'local' ? 'upload' : 'download'
+
+      for (const entry of selected) {
+        const transferId = nextTransferId()
+        const destPath = targetPath + '/' + entry.name
+        window.sftpAPI.transferStart({
+          transferId,
+          sourcePath: entry.path,
+          destPath,
+          direction,
+          isDirectory: entry.isDirectory
+        })
+      }
+    },
+    []
+  )
+
+  // Clipboard and delete keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey
-      if (!meta) return
-
       const s = useSftpStore.getState()
 
+      // Delete / Backspace (with or without Cmd)
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Only handle when focused inside a pane (not in an input)
+        const tag = (e.target as HTMLElement)?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+        const active = document.activeElement?.closest('.sftp-pane')
+        if (!active) return
+
+        const side = active.getAttribute('data-side') as 'local' | 'remote' | null
+        if (!side) return
+
+        handleContextDelete(side)
+        e.preventDefault()
+        return
+      }
+
+      if (!meta) return
+
       if (e.key === 'c' || e.key === 'x') {
-        // Determine which pane is focused
         const active = document.activeElement?.closest('.sftp-pane')
         if (!active) return
 
@@ -302,7 +443,6 @@ export const SftpBrowser: React.FC = () => {
           const destPath = targetPath + '/' + entry.name
 
           if (source === targetSide) {
-            // Same pane: local copy/move
             if (targetSide === 'local') {
               if (operation === 'cut') {
                 window.sftpAPI.localRename(entry.path, destPath)
@@ -313,10 +453,8 @@ export const SftpBrowser: React.FC = () => {
               if (operation === 'cut') {
                 window.sftpAPI.remoteRename(entry.path, destPath)
               }
-              // Remote copy not directly supported — skip
             }
           } else {
-            // Cross-pane: transfer
             const transferId = nextTransferId()
             window.sftpAPI.transferStart({
               transferId,
@@ -337,7 +475,7 @@ export const SftpBrowser: React.FC = () => {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [handleContextDelete])
 
   const handleTransferCancel = useCallback((transferId: string) => {
     window.sftpAPI.transferCancel(transferId)
@@ -367,6 +505,13 @@ export const SftpBrowser: React.FC = () => {
             onDrop={handleLocalDrop}
             side="local"
             currentPath={store.localPath}
+            onContextCut={() => handleContextCut('local')}
+            onContextCopy={() => handleContextCopy('local')}
+            onContextPaste={() => handleContextPaste('local')}
+            onContextDelete={() => handleContextDelete('local')}
+            onContextSendTo={() => handleContextSendTo('local')}
+            clipboardHasContent={store.clipboard !== null}
+            connected={store.connected}
           />
         </div>
         <div className="sftp-divider" />
@@ -383,6 +528,13 @@ export const SftpBrowser: React.FC = () => {
             onDrop={handleRemoteDrop}
             side="remote"
             currentPath={store.remotePath}
+            onContextCut={() => handleContextCut('remote')}
+            onContextCopy={() => handleContextCopy('remote')}
+            onContextPaste={() => handleContextPaste('remote')}
+            onContextDelete={() => handleContextDelete('remote')}
+            onContextSendTo={() => handleContextSendTo('remote')}
+            clipboardHasContent={store.clipboard !== null}
+            connected={store.connected}
           />
         </div>
       </div>

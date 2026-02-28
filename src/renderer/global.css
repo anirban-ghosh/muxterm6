@@ -856,3 +856,64 @@ html, body, #root {
   padding: 0 8px;
   font-size: 11px;
 }
+
+/* Context menu */
+.sftp-context-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 160px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.sftp-context-menu__item {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.sftp-context-menu__item:hover {
+  background: var(--accent-muted);
+}
+
+.sftp-context-menu__item--disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sftp-context-menu__item--disabled:hover {
+  background: transparent;
+}
+
+.sftp-context-menu__item--danger {
+  color: #f87171;
+}
+
+.sftp-context-menu__item--danger:hover {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.sftp-context-menu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+/* Sortable column headers */
+.sftp-file-browser__col--sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sftp-file-browser__col--sortable:hover {
+  color: var(--text);
+}

@@ -136,18 +136,38 @@ class SftpConnectionManager {
     const client = this.getClient(windowId)
     const listing = await client.list(remotePath)
 
-    const entries: FileEntry[] = listing
-      .filter((item) => item.name !== '.' && item.name !== '..')
-      .map((item) => ({
-        name: item.name,
-        path: remotePath === '/' ? `/${item.name}` : `${remotePath}/${item.name}`,
-        isDirectory: item.type === 'd',
-        size: item.size,
-        modifiedAt: item.modifyTime,
-        permissions: item.rights
-          ? `${item.rights.user}${item.rights.group}${item.rights.other}`
-          : '---'
-      }))
+    const filtered = listing.filter((item) => item.name !== '.' && item.name !== '..')
+
+    const entries: FileEntry[] = await Promise.all(
+      filtered.map(async (item) => {
+        const fullPath = remotePath === '/' ? `/${item.name}` : `${remotePath}/${item.name}`
+
+        let isDirectory: boolean
+        if (item.type === 'l') {
+          // Symlink — resolve via stat to determine if target is a directory
+          try {
+            const stat = await client.stat(fullPath)
+            isDirectory = stat.isDirectory
+          } catch {
+            // Broken symlink — treat as file
+            isDirectory = false
+          }
+        } else {
+          isDirectory = item.type === 'd'
+        }
+
+        return {
+          name: item.name,
+          path: fullPath,
+          isDirectory,
+          size: item.size,
+          modifiedAt: item.modifyTime,
+          permissions: item.rights
+            ? `${item.rights.user}${item.rights.group}${item.rights.other}`
+            : '---'
+        }
+      })
+    )
 
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
