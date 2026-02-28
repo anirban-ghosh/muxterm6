@@ -6,6 +6,7 @@ import { TabBar } from './components/TabBar/TabBar'
 import { SplitContainer } from './components/SplitPane/SplitContainer'
 import { StatusBar } from './components/StatusBar/StatusBar'
 import { TmuxGatewayView } from './components/Terminal/TmuxGatewayView'
+import { SftpBrowser } from './components/SftpBrowser/SftpBrowser'
 import type { Tab, SplitNode } from '../shared/types'
 import type { TmuxSessionInfo, TmuxWindowInfo } from '../shared/tmux-types'
 
@@ -26,7 +27,16 @@ function getTmuxSessionId(): string | null {
   return params.get('tmux')
 }
 
+function isSftpWindow(): boolean {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('sftp') === 'true'
+}
+
 export default function App() {
+  // SFTP window — early return with dedicated UI
+  if (isSftpWindow()) {
+    return <SftpBrowser />
+  }
   const tabs = useStore((s) => s.tabs)
   const activeTabId = useStore((s) => s.activeTabId)
   const addTab = useStore((s) => s.addTab)

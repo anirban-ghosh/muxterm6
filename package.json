@@ -29,6 +29,7 @@
     "pino": "^9.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "ssh2-sftp-client": "^12.0.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
@@ -36,6 +37,7 @@
     "@playwright/test": "^1.50.1",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/ssh2-sftp-client": "^9.0.6",
     "@typescript-eslint/eslint-plugin": "^8.24.0",
     "@typescript-eslint/parser": "^8.24.0",
     "@vitejs/plugin-react": "^4.3.4",

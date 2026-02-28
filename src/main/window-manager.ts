@@ -96,6 +96,51 @@ class WindowManager {
     return win
   }
 
+  createSftpWindow(): BrowserWindow {
+    const win = new BrowserWindow({
+      width: 1100,
+      height: 700,
+      minWidth: 700,
+      minHeight: 400,
+      titleBarStyle: 'hidden',
+      trafficLightPosition: { x: 12, y: 12 },
+      vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+      backgroundColor: '#0f0f1a',
+      show: false,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false,
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    })
+
+    win.on('ready-to-show', () => {
+      win.show()
+    })
+
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      shell.openExternal(url)
+      return { action: 'deny' }
+    })
+
+    win.on('closed', () => {
+      this.windows.delete(win)
+      logger.info({ windowId: win.id }, 'sftp window closed')
+    })
+
+    const queryString = 'sftp=true'
+    if (process.env.ELECTRON_RENDERER_URL) {
+      win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?${queryString}`)
+    } else {
+      win.loadFile(join(__dirname, '../renderer/index.html'), { search: queryString })
+    }
+
+    this.windows.add(win)
+    logger.info({ windowId: win.id }, 'sftp window created')
+    return win
+  }
+
   getWindowCount(): number {
     return this.windows.size
   }

@@ -43,6 +43,14 @@ export function buildMenu(): void {
         },
         { type: 'separator' },
         {
+          label: 'SFTP Browser',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            windowManager.createSftpWindow()
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Split Vertically',
           accelerator: 'CmdOrCtrl+D',
           click: (_, window) => {

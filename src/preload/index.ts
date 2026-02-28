@@ -1,9 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import { TMUX_IPC } from '../shared/tmux-ipc-channels'
+import { SFTP_IPC } from '../shared/sftp-ipc-channels'
 import type { TerminalAPI } from './api'
+import type { SftpAPI } from './sftp-api'
 import type { TmuxSessionInfo, TmuxWindowInfo } from '../shared/tmux-types'
 import type { SplitNode } from '../shared/types'
+import type { TransferProgress, HostKeyInfo } from '../shared/sftp-types'
 
 const api: TerminalAPI = {
   createPty: (cols?: number, rows?: number) =>
@@ -170,3 +173,64 @@ const api: TerminalAPI = {
 }
 
 contextBridge.exposeInMainWorld('terminalAPI', api)
+
+const sftpApi: SftpAPI = {
+  parseSshConfig: () => ipcRenderer.invoke(SFTP_IPC.PARSE_SSH_CONFIG),
+  connect: (config) => ipcRenderer.invoke(SFTP_IPC.CONNECT, config),
+  disconnect: () => ipcRenderer.invoke(SFTP_IPC.DISCONNECT),
+
+  remoteList: (path) => ipcRenderer.invoke(SFTP_IPC.REMOTE_LIST, path),
+  remoteRename: (oldPath, newPath) => ipcRenderer.invoke(SFTP_IPC.REMOTE_RENAME, oldPath, newPath),
+  remoteDelete: (path, isDir) => ipcRenderer.invoke(SFTP_IPC.REMOTE_DELETE, path, isDir),
+  remoteMkdir: (path) => ipcRenderer.invoke(SFTP_IPC.REMOTE_MKDIR, path),
+  remoteExists: (path) => ipcRenderer.invoke(SFTP_IPC.REMOTE_EXISTS, path),
+  remoteHome: () => ipcRenderer.invoke(SFTP_IPC.REMOTE_HOME),
+
+  localList: (path) => ipcRenderer.invoke(SFTP_IPC.LOCAL_LIST, path),
+  localRename: (oldPath, newPath) => ipcRenderer.invoke(SFTP_IPC.LOCAL_RENAME, oldPath, newPath),
+  localCopy: (src, dest) => ipcRenderer.invoke(SFTP_IPC.LOCAL_COPY, src, dest),
+  localDelete: (path, isDir) => ipcRenderer.invoke(SFTP_IPC.LOCAL_DELETE, path, isDir),
+  localMkdir: (path) => ipcRenderer.invoke(SFTP_IPC.LOCAL_MKDIR, path),
+  localExists: (path) => ipcRenderer.invoke(SFTP_IPC.LOCAL_EXISTS, path),
+  localHome: () => ipcRenderer.invoke(SFTP_IPC.LOCAL_HOME),
+  localOpenFile: (path) => ipcRenderer.invoke(SFTP_IPC.LOCAL_OPEN_FILE, path),
+
+  transferStart: (request) => ipcRenderer.invoke(SFTP_IPC.TRANSFER_START, request),
+  transferCancel: (transferId) => ipcRenderer.send(SFTP_IPC.TRANSFER_CANCEL, transferId),
+
+  onTransferProgress: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, progress: TransferProgress) =>
+      callback(progress)
+    ipcRenderer.on(SFTP_IPC.TRANSFER_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(SFTP_IPC.TRANSFER_PROGRESS, handler)
+  },
+  onTransferComplete: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, transferId: string) => callback(transferId)
+    ipcRenderer.on(SFTP_IPC.TRANSFER_COMPLETE, handler)
+    return () => ipcRenderer.removeListener(SFTP_IPC.TRANSFER_COMPLETE, handler)
+  },
+  onTransferError: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, transferId: string, error: string) =>
+      callback(transferId, error)
+    ipcRenderer.on(SFTP_IPC.TRANSFER_ERROR, handler)
+    return () => ipcRenderer.removeListener(SFTP_IPC.TRANSFER_ERROR, handler)
+  },
+
+  onHostKeyVerify: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: HostKeyInfo) => callback(info)
+    ipcRenderer.on(SFTP_IPC.HOST_KEY_VERIFY, handler)
+    return () => ipcRenderer.removeListener(SFTP_IPC.HOST_KEY_VERIFY, handler)
+  },
+  respondHostKey: (accepted) => ipcRenderer.send(SFTP_IPC.HOST_KEY_RESPONSE, accepted),
+
+  onPasswordPrompt: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(SFTP_IPC.PASSWORD_PROMPT, handler)
+    return () => ipcRenderer.removeListener(SFTP_IPC.PASSWORD_PROMPT, handler)
+  },
+  respondPassword: (password) => ipcRenderer.send(SFTP_IPC.PASSWORD_RESPONSE, password),
+
+  newSftpWindow: () => ipcRenderer.send(SFTP_IPC.WINDOW_NEW)
+}
+
+contextBridge.exposeInMainWorld('sftpAPI', sftpApi)
