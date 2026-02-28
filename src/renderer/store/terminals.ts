@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand'
 import type { TerminalMeta } from '../../shared/types'
 import type { TabsSlice } from './tabs'
 import type { PanesSlice } from './panes'
+import type { TmuxSlice } from './tmux'
 
 export interface TerminalsSlice {
   terminals: Record<string, TerminalMeta>
@@ -11,7 +12,7 @@ export interface TerminalsSlice {
 }
 
 export const createTerminalsSlice: StateCreator<
-  TabsSlice & PanesSlice & TerminalsSlice,
+  TabsSlice & PanesSlice & TerminalsSlice & TmuxSlice,
   [],
   [],
   TerminalsSlice

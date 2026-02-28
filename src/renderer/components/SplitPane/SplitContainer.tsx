@@ -9,6 +9,8 @@ interface SplitContainerProps {
   activePaneId: string
   onPaneFocus: (paneId: string) => void
   onResize: (paneId: string, ratio: number) => void
+  isTmux?: boolean
+  onTmuxResize?: (tmuxPaneId: string, direction: 'x' | 'y', amount: number) => void
 }
 
 export const SplitContainer: React.FC<SplitContainerProps> = ({
@@ -16,7 +18,9 @@ export const SplitContainer: React.FC<SplitContainerProps> = ({
   tabId,
   activePaneId,
   onPaneFocus,
-  onResize
+  onResize,
+  isTmux,
+  onTmuxResize
 }) => {
   if (node.type === 'leaf') {
     return (
@@ -25,6 +29,7 @@ export const SplitContainer: React.FC<SplitContainerProps> = ({
         ptyId={node.ptyId}
         isActive={node.paneId === activePaneId}
         onFocus={() => onPaneFocus(node.paneId)}
+        tmuxPaneId={node.tmuxPaneId}
       />
     )
   }
@@ -39,6 +44,22 @@ export const SplitContainer: React.FC<SplitContainerProps> = ({
     return getFirstLeafId(n.first)
   }
   const resizeId = getFirstLeafId(node.first)
+
+  // For tmux resize, get the tmux pane ID of the second child's first leaf
+  const getFirstTmuxPaneId = (n: SplitNode): string | undefined => {
+    if (n.type === 'leaf') return n.tmuxPaneId
+    return getFirstTmuxPaneId(n.first)
+  }
+
+  const handleTmuxDividerResize = isTmux && onTmuxResize
+    ? (delta: number) => {
+        const tmuxPaneId = getFirstTmuxPaneId(node.second)
+        if (tmuxPaneId) {
+          const dir = node.direction === 'vertical' ? 'x' as const : 'y' as const
+          onTmuxResize(tmuxPaneId, dir, delta)
+        }
+      }
+    : undefined
 
   return (
     <div
@@ -57,11 +78,15 @@ export const SplitContainer: React.FC<SplitContainerProps> = ({
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
           onResize={onResize}
+          isTmux={isTmux}
+          onTmuxResize={onTmuxResize}
         />
       </div>
       <SplitDivider
         direction={node.direction}
         onResize={(ratio) => onResize(resizeId, ratio)}
+        isTmux={isTmux}
+        onTmuxDividerResize={handleTmuxDividerResize}
       />
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <SplitContainer
@@ -70,6 +95,8 @@ export const SplitContainer: React.FC<SplitContainerProps> = ({
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
           onResize={onResize}
+          isTmux={isTmux}
+          onTmuxResize={onTmuxResize}
         />
       </div>
     </div>

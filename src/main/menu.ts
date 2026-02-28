@@ -63,6 +63,21 @@ export function buildMenu(): void {
           click: (_, window) => {
             if (window) window.webContents.send('menu:close-tab')
           }
+        },
+        { type: 'separator' },
+        {
+          label: 'Select Next Tab',
+          accelerator: 'Ctrl+Tab',
+          click: (_, window) => {
+            if (window) window.webContents.send('menu:next-tab')
+          }
+        },
+        {
+          label: 'Select Previous Tab',
+          accelerator: 'Ctrl+Shift+Tab',
+          click: (_, window) => {
+            if (window) window.webContents.send('menu:prev-tab')
+          }
         }
       ]
     },
