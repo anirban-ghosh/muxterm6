@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand'
 import type { Tab, SplitNode } from '../../shared/types'
 import type { PanesSlice } from './panes'
 import type { TerminalsSlice } from './terminals'
+import type { TmuxSlice } from './tmux'
 
 export interface TabsSlice {
   tabs: Tab[]
@@ -16,7 +17,7 @@ export interface TabsSlice {
 }
 
 export const createTabsSlice: StateCreator<
-  TabsSlice & PanesSlice & TerminalsSlice,
+  TabsSlice & PanesSlice & TerminalsSlice & TmuxSlice,
   [],
   [],
   TabsSlice

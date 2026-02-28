@@ -81,7 +81,7 @@ html, body, #root {
   align-items: center;
   flex: 1;
   min-width: 0;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 }
 
 .tabbar__tabs {
@@ -110,6 +110,7 @@ html, body, #root {
   border-radius: 6px;
   flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
+  -webkit-app-region: no-drag;
 }
 
 .tabbar__new:hover {
@@ -130,6 +131,7 @@ html, body, #root {
   min-width: 80px;
   max-width: 180px;
   transition: background 0.15s;
+  -webkit-app-region: no-drag;
 }
 
 .tab:hover {
@@ -221,6 +223,25 @@ html, body, #root {
   background: var(--split-divider-hover);
 }
 
+/* Shadow divider — follows mouse during tmux drag */
+.split-divider-shadow {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+.split-divider-shadow--vertical {
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.split-divider-shadow--horizontal {
+  height: 2px;
+  transform: translateY(-1px);
+}
+
 /* Terminal */
 .terminal-view {
   position: relative;
@@ -258,6 +279,92 @@ html, body, #root {
 
 .terminal-view .xterm-viewport::-webkit-scrollbar-thumb:hover {
   background: var(--accent-muted);
+}
+
+/* Tmux gateway overlay */
+.tmux-gateway {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 15, 26, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+}
+
+.tmux-gateway__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 48px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.tmux-gateway__icon {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.tmux-gateway__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tmux-gateway__session {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tmux-gateway__session strong {
+  color: var(--text);
+}
+
+.tmux-gateway__info {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.tmux-gateway__actions {
+  display: flex;
+  gap: 24px;
+  margin-top: 8px;
+}
+
+.tmux-gateway__key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tmux-gateway__key kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
 }
 
 /* Status bar */

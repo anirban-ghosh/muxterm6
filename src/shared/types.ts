@@ -1,7 +1,7 @@
 export type SplitDirection = 'horizontal' | 'vertical'
 
 export type SplitNode =
-  | { type: 'leaf'; paneId: string; ptyId: string }
+  | { type: 'leaf'; paneId: string; ptyId: string; tmuxPaneId?: string }
   | {
       type: 'split'
       direction: SplitDirection

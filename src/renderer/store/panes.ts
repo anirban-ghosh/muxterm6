@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand'
 import type { SplitNode, SplitDirection } from '../../shared/types'
 import type { TabsSlice } from './tabs'
 import type { TerminalsSlice } from './terminals'
+import type { TmuxSlice } from './tmux'
 
 export interface PanesSlice {
   splitPane: (tabId: string, paneId: string, direction: SplitDirection, newPaneId: string, newPtyId: string) => void
@@ -86,7 +87,7 @@ export function findPtyForPane(node: SplitNode, paneId: string): string | null {
 }
 
 export const createPanesSlice: StateCreator<
-  TabsSlice & PanesSlice & TerminalsSlice,
+  TabsSlice & PanesSlice & TerminalsSlice & TmuxSlice,
   [],
   [],
   PanesSlice
