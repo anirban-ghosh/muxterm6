@@ -24,3 +24,22 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
 
   return { app, page }
 }
+
+export async function closeApp(app: ElectronApplication | undefined): Promise<void> {
+  if (!app) return
+  // app.close() can hang when PTY child processes don't exit cleanly.
+  // Race against a 5s timeout, then force-kill the process tree.
+  const pid = app.process().pid
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error('close timeout')), 5000)
+      )
+    ])
+  } catch {
+    if (pid) {
+      try { process.kill(pid, 'SIGKILL') } catch { /* already dead */ }
+    }
+  }
+}

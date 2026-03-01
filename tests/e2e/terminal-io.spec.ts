@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { launchApp } from './helpers/app-launch'
+import { launchApp, closeApp } from './helpers/app-launch'
 import { typeInTerminal, waitForTerminalOutput } from './helpers/terminal-helpers'
 import type { ElectronApplication, Page } from '@playwright/test'
 
@@ -13,7 +13,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
-  await app?.close()
+  await closeApp(app)
 })
 
 test('can type and see output in terminal', async () => {
