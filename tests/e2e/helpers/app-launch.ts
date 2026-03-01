@@ -2,8 +2,12 @@ import { _electron as electron, type ElectronApplication, type Page } from '@pla
 import { resolve } from 'path'
 
 export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
+  const args = [resolve(__dirname, '../../../out/main/index.js')]
+  if (process.env.CI && process.platform === 'linux') {
+    args.unshift('--no-sandbox')
+  }
   const app = await electron.launch({
-    args: [resolve(__dirname, '../../../out/main/index.js')],
+    args,
     env: {
       ...process.env,
       NODE_ENV: 'test'
