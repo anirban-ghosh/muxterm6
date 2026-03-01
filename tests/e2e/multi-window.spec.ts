@@ -18,8 +18,13 @@ test.afterAll(async () => {
 test('can open a new window', async () => {
   const windowsBefore = app.windows().length
 
-  // Use Cmd+N to open a new window
-  await page.keyboard.press('Meta+n')
+  // Trigger "New Window" via Electron menu (keyboard shortcuts don't
+  // reach native menu accelerators in Playwright)
+  await app.evaluate(({ Menu }) => {
+    const menu = Menu.getApplicationMenu()
+    const item = menu?.getMenuItemById('new-window')
+    if (item) item.click()
+  })
   await page.waitForTimeout(1000)
 
   const windowsAfter = app.windows().length

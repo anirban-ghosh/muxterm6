@@ -21,8 +21,13 @@ test('starts with one terminal pane', async () => {
 })
 
 test('split divider appears after split', async () => {
-  // Trigger split via menu shortcut (Cmd+D)
-  await page.keyboard.press('Meta+d')
+  // Trigger split via Electron menu (keyboard shortcuts don't
+  // reach native menu accelerators in Playwright)
+  await app.evaluate(({ Menu }) => {
+    const menu = Menu.getApplicationMenu()
+    const item = menu?.getMenuItemById('split-vertical')
+    if (item) item.click()
+  })
   await page.waitForTimeout(500)
 
   const dividers = page.locator('.split-divider')

@@ -35,6 +35,7 @@ export function buildMenu(): void {
           }
         },
         {
+          id: 'new-window',
           label: 'New Window',
           accelerator: 'CmdOrCtrl+N',
           click: () => {
@@ -51,6 +52,7 @@ export function buildMenu(): void {
         },
         { type: 'separator' },
         {
+          id: 'split-vertical',
           label: 'Split Vertically',
           accelerator: 'CmdOrCtrl+D',
           click: (_, window) => {
