@@ -23,10 +23,11 @@ test('starts with one terminal pane', async () => {
 test('split divider appears after split', async () => {
   // Trigger split via Electron menu (keyboard shortcuts don't
   // reach native menu accelerators in Playwright)
-  await app.evaluate(({ Menu }) => {
+  await app.evaluate(({ Menu, BrowserWindow }) => {
     const menu = Menu.getApplicationMenu()
     const item = menu?.getMenuItemById('split-vertical')
-    if (item) item.click()
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    if (item && item.click) item.click(item, win)
   })
   await page.waitForTimeout(500)
 
