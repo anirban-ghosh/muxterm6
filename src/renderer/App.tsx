@@ -7,6 +7,7 @@ import { SplitContainer } from './components/SplitPane/SplitContainer'
 import { StatusBar } from './components/StatusBar/StatusBar'
 import { TmuxGatewayView } from './components/Terminal/TmuxGatewayView'
 import { SftpBrowser } from './components/SftpBrowser/SftpBrowser'
+import { TunnelManager } from './components/TunnelManager/TunnelManager'
 import type { Tab, SplitNode } from '../shared/types'
 import type { TmuxSessionInfo, TmuxWindowInfo } from '../shared/tmux-types'
 
@@ -32,10 +33,19 @@ function isSftpWindow(): boolean {
   return params.get('sftp') === 'true'
 }
 
+function isTunnelManagerWindow(): boolean {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('tunnel') === 'true'
+}
+
 export default function App() {
   // SFTP window — early return with dedicated UI
   if (isSftpWindow()) {
     return <SftpBrowser />
+  }
+  // Tunnel manager window — early return with dedicated UI
+  if (isTunnelManagerWindow()) {
+    return <TunnelManager />
   }
   const tabs = useStore((s) => s.tabs)
   const activeTabId = useStore((s) => s.activeTabId)

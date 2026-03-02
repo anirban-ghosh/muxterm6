@@ -2,12 +2,15 @@ import { app, BrowserWindow } from 'electron'
 import { windowManager } from './window-manager'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerSftpIpcHandlers } from './sftp/sftp-ipc-handlers'
+import { registerTunnelIpcHandlers } from './tunnel/tunnel-ipc-handlers'
+import { tunnelManager } from './tunnel/tunnel-manager'
 import { buildMenu } from './menu'
 import logger from './logger'
 
 app.whenReady().then(() => {
   registerIpcHandlers()
   registerSftpIpcHandlers()
+  registerTunnelIpcHandlers()
   buildMenu()
   windowManager.createWindow()
 
@@ -18,6 +21,10 @@ app.whenReady().then(() => {
   })
 
   logger.info('MuxTerm started')
+})
+
+app.on('before-quit', async () => {
+  await tunnelManager.destroyAll()
 })
 
 app.on('window-all-closed', () => {

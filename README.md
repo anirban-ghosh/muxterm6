@@ -1,6 +1,6 @@
 # MuxTerm
 
-A modern, cross-platform terminal emulator with tabs, split panes, tmux control mode integration, and a built-in SFTP browser.
+A modern, cross-platform terminal emulator with tabs, split panes, tmux control mode integration, a built-in SFTP browser, and an SSH port forwarding manager.
 
 Built with Electron, React, xterm.js, and node-pty.
 
@@ -18,6 +18,7 @@ MuxTerm is a terminal emulator that combines the features of several popular ter
 - **Tabs and split panes** with mouse-resizable vertical and horizontal splits, nested to arbitrary depth
 - **Tmux control mode (`tmux -CC`)** integration that maps tmux sessions to native windows, tmux windows to tabs, and tmux panes to split panes — enabling native scrolling, text selection, and copy/paste within tmux, both locally and over SSH
 - **Built-in two-pane SFTP browser** with drag-and-drop transfers, rsync-based file operations with progress reporting, SSH config auto-discovery, and interactive authentication
+- **SSH port forwarding manager** supporting local (`-L`), remote (`-R`), and dynamic SOCKS5 (`-D`) tunnels with a visual topology diagram, pause/resume controls, and persistent tunnels that survive window close
 
 ### How it was built
 
@@ -46,6 +47,7 @@ I wanted a terminal emulator app that had at minimum the following features:
 - **Multiple tabs and resizable split panes** (vertical and horizontal) — like Konsole, iTerm2, or Windows Terminal
 - **A built-in SFTP browser** — like Termius or MobaXterm
 - **Tmux control mode integration** to map tmux windows and panes to native tabs and panes, enabling native scrolling, selection, and copy — only iTerm2 has this, and it is available only on Mac
+- **Port Forwarding Manager:**  A built-in port forwarding manager - with visual guidance like MobaXterm
 
 The above combined feature set does not exist in any single known solution, with the possible exception of WezTerm.
 
@@ -121,7 +123,7 @@ MuxTerm follows a standard Electron architecture with three process layers:
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| **Main process** | Node.js, node-pty, ssh2-sftp-client | Shell management, SFTP connections, tmux protocol parsing |
+| **Main process** | Node.js, node-pty, ssh2-sftp-client, ssh2 | Shell management, SFTP connections, SSH tunnels, tmux protocol parsing |
 | **Preload** | Electron contextBridge | Secure IPC bridge between main and renderer |
 | **Renderer** | React 18, xterm.js, Zustand | UI rendering, terminal display, state management |
 
@@ -130,6 +132,7 @@ src/
   main/           # Electron main process
     tmux/          # Tmux control mode (protocol parser, session manager)
     sftp/          # SFTP services (connection manager, transfers, local files)
+    tunnel/        # SSH tunnel manager (local, remote, dynamic forwarding)
   preload/         # Context bridge APIs
   renderer/        # React UI
     components/
@@ -137,9 +140,14 @@ src/
       SplitPane/   # Recursive split pane layout
       TabBar/      # Tab management
       SftpBrowser/ # Two-pane SFTP browser
-    store/         # Zustand state (app store, tmux slice, SFTP store)
+      TunnelManager/ # Port forwarding manager UI
+    store/         # Zustand state (app store, tmux slice, SFTP store, tunnel store)
   shared/          # Types and IPC channel definitions
 ```
+
+#### Port Forwarding Manager
+
+The tunnel subsystem lives in `src/main/tunnel/` and manages SSH port forwarding independently of any window. A singleton `TunnelManager` in the main process holds all active tunnels, which persist even when the manager window is closed. The manager window (`?tunnel=true`) is a view-only UI that hydrates from the backend on open. Supports local (`-L`), remote (`-R`), and dynamic SOCKS5 (`-D`) tunnels using raw `ssh2.Client` connections with `net.createServer` for local TCP listeners. The UI includes a visual topology diagram (inspired by MobaXterm) that updates reactively as the user configures a new tunnel.
 
 For a detailed architecture reference, see [docs/architecture.md](docs/architecture.md).
 
@@ -239,12 +247,50 @@ Open the SFTP browser from the menu: **Shell > SFTP Browser** (`Cmd+Shift+S`).
 - Hidden files are always shown
 - Remote symlinks are resolved correctly
 
+### Port Forwarding Manager
+
+Open the port forwarding manager from the menu: **Shell > Port Forwarding** (`Cmd+Shift+F`).
+
+The port forwarding manager lets you create and manage SSH tunnels without touching the command line. Tunnels persist in the background — closing the manager window keeps all tunnels alive. Re-opening the manager shows all existing tunnels. Quitting the app (`Cmd+Q`) gracefully tears down all tunnels.
+
+**Creating a tunnel:**
+
+1. Click **Add Tunnel** in the toolbar
+2. Select a host from your `~/.ssh/config` dropdown, or enter custom SSH connection details (hostname, port, username, identity file)
+3. Choose the tunnel type:
+   - **Local (`-L`)** — Forwards a local port through the SSH server to a remote destination. Use this to access remote services (databases, web servers) as if they were running locally.
+   - **Remote (`-R`)** — Binds a port on the SSH server and forwards incoming connections back to your local machine. Use this to expose a local service to the remote network.
+   - **Dynamic (`-D`)** — Creates a local SOCKS5 proxy that routes all traffic through the SSH server. Use this to tunnel arbitrary traffic (web browsing, APIs) through the SSH connection.
+4. Configure ports:
+   - **Local Port** — The port on your machine (required for all types)
+   - **Remote Host** and **Remote Port** — The destination (for Local and Remote types only)
+5. The visual diagram updates in real time as you fill in the fields, showing exactly how data will flow through the tunnel
+6. Click **Start Tunnel** to connect
+
+**Managing tunnels:**
+
+| Column | Description |
+|--------|-------------|
+| Type | Badge showing L (local), R (remote), or D (dynamic) |
+| Host | SSH server hostname |
+| SSH Port | SSH connection port |
+| Local Port | Port on your machine |
+| Remote | Remote host:port (or `*` for dynamic) |
+| Status | Connecting, Active, Paused, or Error |
+| Conns | Number of active connections through the tunnel |
+| Actions | Pause/Resume and Destroy buttons |
+
+**Tunnel controls:**
+
+- **Pause** — Temporarily stops the tunnel listener while keeping the SSH connection alive. No new connections are accepted. Click **Resume** to restart.
+- **Destroy** — Permanently tears down the tunnel, closing the SSH connection and freeing the port.
+
 ---
 
 ## Future features
 
 - Continue fixing tmux control mode rendering edge cases
-- Add a port forwarding manager (local, remote, and dynamic tunnels)
+- Remote port forwarding — already implemented and functional in the port forwarding manager
 - Windows platform support
 - Settings UI for themes, fonts, and keybindings
 - SSH connection manager integrated with the terminal
