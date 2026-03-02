@@ -45,6 +45,18 @@ This document describes the architecture of MuxTerm — a terminal emulator buil
   - [SFTP IPC Handlers](#sftp-ipc-handlers)
   - [Renderer Components](#sftp-renderer-components)
   - [SFTP Store](#sftp-store)
+- [Port Forwarding Manager](#port-forwarding-manager)
+  - [Port Forwarding Overview](#port-forwarding-overview)
+  - [Tunnel Manager (Backend)](#tunnel-manager-backend)
+  - [SSH Connection and Auth Flow](#ssh-connection-and-auth-flow)
+  - [Local Port Forwarding](#local-port-forwarding)
+  - [Remote Port Forwarding](#remote-port-forwarding)
+  - [Dynamic SOCKS5 Forwarding](#dynamic-socks5-forwarding)
+  - [Pause and Resume](#pause-and-resume)
+  - [Tunnel IPC Handlers](#tunnel-ipc-handlers)
+  - [Tunnel Renderer Components](#tunnel-renderer-components)
+  - [Tunnel Store](#tunnel-store)
+  - [Lifecycle and Persistence](#lifecycle-and-persistence)
 - [IPC Channel Reference](#ipc-channel-reference)
 - [Data Flow Diagrams](#data-flow-diagrams)
   - [Normal Terminal Keystroke Flow](#normal-terminal-keystroke-flow)
@@ -78,12 +90,17 @@ This document describes the architecture of MuxTerm — a terminal emulator buil
 │  │  │ SFTP Subsystem                                    │    │   │
 │  │  │  Connection Manager │ Transfer Service │ Local FS │    │   │
 │  │  └──────────────────────────────────────────────────┘    │   │
+│  │  ┌──────────────────────────────────────────────────┐    │   │
+│  │  │ Tunnel Subsystem                                  │    │   │
+│  │  │  TunnelManager (ssh2 + net) │ SOCKS5 proxy       │    │   │
+│  │  └──────────────────────────────────────────────────┘    │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                           │ IPC (contextBridge)                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │                   Preload Script                          │   │
 │  │         terminalAPI (window.terminalAPI)                  │   │
 │  │         sftpAPI     (window.sftpAPI)                      │   │
+│  │         tunnelAPI   (window.tunnelAPI)                    │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                           │                                      │
 │  ┌──────────────────────────────────────────────────────────┐   │
@@ -97,6 +114,7 @@ This document describes the architecture of MuxTerm — a terminal emulator buil
 │  │  │           │   └─ TerminalView (xterm.js)           │  │   │
 │  │  │           ├─ TmuxGatewayView (overlay)             │  │   │
 │  │  │           ├─ SftpBrowser (standalone window)       │  │   │
+│  │  │           ├─ TunnelManager (standalone window)    │  │   │
 │  │  │           └─ StatusBar                             │  │   │
 │  │  └────────────────────────────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
@@ -110,6 +128,7 @@ MuxTerm has three distinct window types, all served by the same renderer entry p
 | **Terminal** | (none) | Normal terminal with tabs and split panes |
 | **Tmux** | `?tmux=<sessionId>` | Tmux control mode window mapped to a tmux session |
 | **SFTP** | `?sftp=true` | Two-pane file browser with remote transfers |
+| **Tunnel** | `?tunnel=true` | SSH port forwarding manager |
 
 ---
 
@@ -119,8 +138,8 @@ MuxTerm follows Electron's multi-process architecture:
 
 | Process | Runtime | Role |
 |---------|---------|------|
-| **Main** | Node.js | Shell management via node-pty, tmux protocol parsing, SFTP connections via ssh2-sftp-client, window lifecycle, application menu, IPC handler registration |
-| **Preload** | Node.js (sandboxed bridge) | Exposes `window.terminalAPI` and `window.sftpAPI` via `contextBridge`, translating between `ipcRenderer` calls and typed TypeScript interfaces |
+| **Main** | Node.js | Shell management via node-pty, tmux protocol parsing, SFTP connections via ssh2-sftp-client, SSH tunnels via ssh2, window lifecycle, application menu, IPC handler registration |
+| **Preload** | Node.js (sandboxed bridge) | Exposes `window.terminalAPI`, `window.sftpAPI`, and `window.tunnelAPI` via `contextBridge`, translating between `ipcRenderer` calls and typed TypeScript interfaces |
 | **Renderer** | Chromium | React 18 UI with xterm.js terminal instances, Zustand state management, component tree rendering |
 
 Security configuration:
@@ -149,16 +168,20 @@ src/
 │   │   ├── tmux-command-queue.ts  # FIFO command queue with seq-number response correlation
 │   │   ├── tmux-layout-parser.ts  # Parses tmux layout strings into binary SplitNode trees
 │   │   └── tmux-escape.ts         # Octal decode / hex encode for tmux data
-│   └── sftp/                      # SFTP subsystem
-│       ├── sftp-connection-manager.ts # ssh2-sftp-client wrapper, auth flows, file operations
-│       ├── sftp-ipc-handlers.ts   # Registers all SFTP ipcMain handlers
-│       ├── rsync-transfer-service.ts  # rsync-based transfers with progress, SFTP fallback
-│       ├── local-file-service.ts  # Local filesystem operations (list, rename, delete, etc.)
-│       └── ssh-config-parser.ts   # Parses ~/.ssh/config for host auto-discovery
+│   ├── sftp/                      # SFTP subsystem
+│   │   ├── sftp-connection-manager.ts # ssh2-sftp-client wrapper, auth flows, file operations
+│   │   ├── sftp-ipc-handlers.ts   # Registers all SFTP ipcMain handlers
+│   │   ├── rsync-transfer-service.ts  # rsync-based transfers with progress, SFTP fallback
+│   │   ├── local-file-service.ts  # Local filesystem operations (list, rename, delete, etc.)
+│   │   └── ssh-config-parser.ts   # Parses ~/.ssh/config for host auto-discovery
+│   └── tunnel/                    # Port forwarding subsystem
+│       ├── tunnel-manager.ts      # Singleton: SSH tunnel lifecycle, local/remote/dynamic forwarding
+│       └── tunnel-ipc-handlers.ts # Registers all tunnel ipcMain handlers
 ├── preload/
 │   ├── index.ts                   # contextBridge: exposes terminalAPI + sftpAPI
 │   ├── api.ts                     # TerminalAPI type definition
-│   └── sftp-api.ts                # SftpAPI type definition
+│   ├── sftp-api.ts                # SftpAPI type definition
+│   └── tunnel-api.ts              # TunnelAPI type definition
 ├── renderer/
 │   ├── main.tsx                   # React entry point (createRoot, StrictMode)
 │   ├── App.tsx                    # Root component: URL routing, tab/pane orchestration, tmux wiring
@@ -180,10 +203,15 @@ src/
 │   │   │   ├── AddressBar.tsx     # Path breadcrumb/input
 │   │   │   ├── ConnectionBar.tsx  # Connection status + connect/disconnect button
 │   │   │   ├── ConnectionDialog.tsx # SSH host picker + manual entry
-│   │   │   ├── HostKeyDialog.tsx  # SSH host key verification prompt
-│   │   │   ├── PasswordDialog.tsx # Password authentication prompt
+│   │   │   ├── HostKeyDialog.tsx  # SSH host key verification prompt (shared with Tunnel)
+│   │   │   ├── PasswordDialog.tsx # Password authentication prompt (shared with Tunnel)
 │   │   │   ├── ConflictDialog.tsx # File conflict resolution (overwrite/rename/cancel)
 │   │   │   └── TransferProgressBar.tsx # Active transfer progress display
+│   │   ├── TunnelManager/
+│   │   │   ├── TunnelManager.tsx  # Root tunnel component: table view, auth dialogs
+│   │   │   ├── TunnelTable.tsx    # Active tunnels table with status and actions
+│   │   │   ├── AddTunnelDialog.tsx # Tunnel creation form with SSH config picker
+│   │   │   └── TunnelDiagram.tsx  # Visual CSS topology diagram (local/remote/dynamic)
 │   │   └── StatusBar/StatusBar.tsx # Bottom status bar
 │   ├── store/
 │   │   ├── index.ts               # Zustand store: combines all slices
@@ -191,7 +219,8 @@ src/
 │   │   ├── panes.ts               # PanesSlice: split/close/resize via SplitNode tree ops
 │   │   ├── terminals.ts           # TerminalsSlice: PTY metadata registry
 │   │   ├── tmux.ts                # TmuxSlice: tmux session state, window/pane mappings
-│   │   └── sftp.ts                # Standalone Zustand store for SFTP browser
+│   │   ├── sftp.ts                # Standalone Zustand store for SFTP browser
+│   │   └── tunnel.ts              # Standalone Zustand store for tunnel manager
 │   ├── hooks/
 │   │   ├── useTerminal.ts         # xterm.js lifecycle: create, fit, mouse handling, dispose
 │   │   ├── usePty.ts              # PTY connection hook
@@ -207,6 +236,8 @@ src/
     ├── ipc-channels.ts            # PTY IPC channel constants
     ├── tmux-ipc-channels.ts       # Tmux IPC channel constants
     ├── sftp-ipc-channels.ts       # SFTP IPC channel constants
+    ├── tunnel-types.ts            # TunnelType, TunnelStatus, TunnelConfig, TunnelInfo
+    ├── tunnel-ipc-channels.ts     # Tunnel IPC channel constants
     └── constants.ts               # UI constants (DEFAULT_COLS, TAB_HEIGHT, etc.)
 ```
 
@@ -217,7 +248,7 @@ src/
 MuxTerm uses **electron-vite** to build all three process layers from a single config:
 
 **`electron.vite.config.ts`:**
-- **Main**: `externalizeDepsPlugin()` keeps native modules (node-pty, ssh2-sftp-client) external
+- **Main**: `externalizeDepsPlugin()` keeps native modules (node-pty, ssh2-sftp-client, ssh2) external
 - **Preload**: Same externalization for native module access
 - **Renderer**: `@vitejs/plugin-react` for JSX/TSX compilation
 
@@ -241,10 +272,12 @@ The app entry point runs on `app.whenReady()`:
 
 1. Registers PTY + tmux IPC handlers (`registerIpcHandlers()`)
 2. Registers SFTP IPC handlers (`registerSftpIpcHandlers()`)
-3. Builds the native application menu (`buildMenu()`)
-4. Creates the first terminal window (`windowManager.createWindow()`)
-5. Re-creates a window on `activate` (macOS dock click) if none exist
-6. Quits on `window-all-closed` (except macOS)
+3. Registers tunnel IPC handlers (`registerTunnelIpcHandlers()`)
+4. Builds the native application menu (`buildMenu()`)
+5. Creates the first terminal window (`windowManager.createWindow()`)
+6. Re-creates a window on `activate` (macOS dock click) if none exist
+7. On `before-quit`: gracefully destroys all SSH tunnels (`tunnelManager.destroyAll()`)
+8. Quits on `window-all-closed` (except macOS)
 
 ### Window Manager
 
@@ -257,6 +290,7 @@ Creates three window types with shared configuration:
 | `createWindow()` | Normal terminal window | (none) |
 | `createTmuxWindow(sessionId)` | Tmux session window | `?tmux=<sessionId>` |
 | `createSftpWindow()` | SFTP browser window | `?sftp=true` |
+| `createTunnelWindow()` | Port forwarding manager | `?tunnel=true` |
 
 All windows share:
 - `titleBarStyle: 'hidden'` with `trafficLightPosition: { x: 12, y: 12 }` (macOS)
@@ -265,6 +299,8 @@ All windows share:
 - `contextIsolation: true`, `nodeIntegration: false`
 - Preload script at `../preload/index.js`
 - External URL handler that opens links in the system browser
+
+**Single-instance windows**: `createTunnelWindow()` checks if a tunnel window is already open (by scanning URLs for `tunnel=true`). If found, it focuses the existing window instead of creating a new one.
 
 Window cleanup: on `closed`, `ptyManager.destroyAllForWindow(windowId)` kills associated PTY processes.
 
@@ -339,7 +375,7 @@ Builds the native menu bar:
 | Menu | Items |
 |------|-------|
 | **App** (macOS only) | About, Services, Hide, Quit |
-| **Shell** | New Tab (Cmd+T), New Window (Cmd+N), SFTP Browser (Cmd+Shift+S), Split Vertical (Cmd+D), Split Horizontal (Cmd+Shift+D), Close Tab (Cmd+W), Next/Prev Tab (Ctrl+Tab) |
+| **Shell** | New Tab (Cmd+T), New Window (Cmd+N), SFTP Browser (Cmd+Shift+S), Port Forwarding (Cmd+Shift+F), Split Vertical (Cmd+D), Split Horizontal (Cmd+Shift+D), Close Tab (Cmd+W), Next/Prev Tab (Ctrl+Tab) |
 | **Edit** | Copy, Paste, Select All |
 | **View** | Reload, Dev Tools, Zoom, Fullscreen |
 | **Window** | Minimize, Zoom, Front (macOS) |
@@ -373,7 +409,7 @@ Log level controlled by `LOG_LEVEL` env var (default: `info`).
 
 **`src/preload/index.ts`**
 
-The preload script bridges the main and renderer processes via `contextBridge.exposeInMainWorld`. It exposes two typed API objects:
+The preload script bridges the main and renderer processes via `contextBridge.exposeInMainWorld`. It exposes three typed API objects:
 
 ### `window.terminalAPI` (TerminalAPI)
 
@@ -417,6 +453,25 @@ The preload script bridges the main and renderer processes via `contextBridge.ex
 - `onTransferProgress`, `onTransferComplete`, `onTransferError`
 - `onHostKeyVerify`, `onPasswordPrompt`
 
+### `window.tunnelAPI` (TunnelAPI)
+
+**Request-response**:
+- `parseSshConfig()` → `SshHostConfig[]`
+- `createTunnel(config)` → `TunnelInfo`
+- `destroyTunnel(id)` → `void`
+- `pauseTunnel(id)` → `void`
+- `resumeTunnel(id)` → `void`
+- `listTunnels()` → `TunnelInfo[]`
+
+**Fire-and-forget**:
+- `respondHostKey(accepted)` — Host key verification response
+- `respondPassword(password)` — Password authentication response
+- `newTunnelWindow()`
+
+**Event listeners**:
+- `onStatusUpdate` — Tunnel status/connection count changes
+- `onHostKeyVerify`, `onPasswordPrompt`
+
 ---
 
 ## Renderer Process
@@ -430,6 +485,7 @@ The root `App` component uses URL query parameters for window-type routing:
 ```
 URL                          → Component
 ?sftp=true                   → <SftpBrowser />  (early return)
+?tunnel=true                 → <TunnelManager />  (early return)
 ?tmux=<sessionId>            → Terminal UI in tmux mode
 (no params)                  → Terminal UI in normal mode
 ```
@@ -976,6 +1032,283 @@ Tracks: connection state, local/remote file listings, selection state, clipboard
 
 ---
 
+## Port Forwarding Manager
+
+### Port Forwarding Overview
+
+The port forwarding manager is an independent subsystem that manages SSH tunnels. Unlike the SFTP browser (which ties connections to windows), tunnels are **window-independent** — they persist in the main process regardless of whether the manager UI is open. The manager window is purely a view that hydrates from the backend on open and receives push updates.
+
+```
+┌──────────────────────────────────────────────────┐
+│  Tunnel Manager Window (?tunnel=true)            │
+│                                                   │
+│  ┌─────────────────────────────────────────────┐ │
+│  │         TitleBar + Toolbar                    │ │
+│  ├─────────────────────────────────────────────┤ │
+│  │                                               │ │
+│  │  TunnelTable                                  │ │
+│  │  ┌──────────────────────────────────────┐    │ │
+│  │  │ Type │ Host │ Ports │ Status │ Actions│    │ │
+│  │  ├──────────────────────────────────────┤    │ │
+│  │  │  L   │ ...  │ ...   │ Active │ ⏸ ✕  │    │ │
+│  │  │  R   │ ...  │ ...   │ Paused │ ▶ ✕  │    │ │
+│  │  │  D   │ ...  │ ...   │ Active │ ⏸ ✕  │    │ │
+│  │  └──────────────────────────────────────┘    │ │
+│  │                                               │ │
+│  └─────────────────────────────────────────────┘ │
+│                                                   │
+│  Dialogs: AddTunnelDialog (with TunnelDiagram),  │
+│           HostKeyDialog, PasswordDialog           │
+└──────────────────────────────────────────────────┘
+```
+
+Key architectural difference from SFTP: The `TunnelManager` singleton in the main process owns all tunnel state. The renderer only reads state via `listTunnels()` on mount and receives push updates via `onStatusUpdate`. This means:
+- Closing the tunnel manager window has no effect on running tunnels
+- Re-opening the window shows all existing tunnels immediately
+- Only `Cmd+Q` (app quit) or explicit "Destroy" actions tear down tunnels
+
+### Tunnel Manager (Backend)
+
+**`src/main/tunnel/tunnel-manager.ts`** — Singleton `tunnelManager`
+
+The core class managing all SSH tunnels:
+
+```typescript
+class TunnelManager {
+  private tunnels: Map<string, ManagedTunnel>  // keyed by UUID
+  private managerWindowId: number | null       // for push notifications
+
+  // Public API
+  createTunnel(config, authWindowId): Promise<TunnelInfo>
+  destroyTunnel(id): Promise<void>
+  pauseTunnel(id): Promise<void>
+  resumeTunnel(id): Promise<void>
+  listTunnels(): TunnelInfo[]
+  destroyAll(): Promise<void>
+  setManagerWindow(windowId): void
+}
+```
+
+Each `ManagedTunnel` tracks:
+- `id` — UUID
+- `config` — `TunnelConfig` (type, SSH params, port params)
+- `status` — `'connecting' | 'active' | 'paused' | 'error'`
+- `sshClient` — `ssh2.Client` instance
+- `server` — `net.Server` instance (for local/dynamic; null for remote)
+- `activeConnections` — count of piped TCP connections
+
+**Status push notifications**: When any tunnel's state changes (status, connection count), the manager sends `TUNNEL_IPC.STATUS_UPDATE` to the manager window (if open). This uses `BrowserWindow.fromId()` with a null check — if the window was closed, the `managerWindowId` is cleared.
+
+### SSH Connection and Auth Flow
+
+The `connectSSH()` method follows the same IPC round-trip pattern as the SFTP connection manager:
+
+```
+createTunnel(config, authWindowId)
+      │
+      ▼
+  new ssh2.Client()
+      │
+      ├── hostVerifier callback:
+      │     Main → send TUNNEL_IPC.HOST_KEY_VERIFY → Renderer shows HostKeyDialog
+      │     User clicks Accept → Renderer sends HOST_KEY_RESPONSE → Main resolves
+      │
+      ├── Read identity file (if configured)
+      │
+      ├── If no private key → password prompt:
+      │     Main → send TUNNEL_IPC.PASSWORD_PROMPT → Renderer shows PasswordDialog
+      │     User enters password → Renderer sends PASSWORD_RESPONSE → Main resolves
+      │
+      ├── sshClient.connect(config)
+      │     │
+      │     ├── on 'ready' → resolve (SSH connected)
+      │     ├── on 'error' → reject
+      │     └── on 'close' → mark tunnel as error, notify UI
+      │
+      └── setupForwarding(tunnel) → type-specific setup
+```
+
+The `HostKeyDialog` and `PasswordDialog` components are reused from the SFTP browser — the tunnel manager imports them directly. They work identically, just responding on `TUNNEL_IPC.*` channels instead of `SFTP_IPC.*`.
+
+**SSH keepalive**: Tunnel connections use `keepaliveInterval: 30000` (30 seconds) to prevent SSH idle disconnection.
+
+### Local Port Forwarding
+
+**`setupLocalForward(tunnel)`** — Implements `ssh -L localPort:remoteHost:remotePort`
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│ Local App    │ ──TCP──▶│ net.Server   │──SSH────▶│ Remote Host  │
+│ connects to  │         │ :localPort   │forwardOut│ :remotePort  │
+│ 127.0.0.1:   │         │ (127.0.0.1)  │         │              │
+│ localPort    │         └──────────────┘         └──────────────┘
+└──────────────┘
+```
+
+Implementation:
+1. `net.createServer()` listening on `127.0.0.1:localPort`
+2. On each incoming TCP connection:
+   - Increment `activeConnections`, notify UI
+   - Call `sshClient.forwardOut('127.0.0.1', localPort, remoteHost, remotePort)`
+   - Pipe the TCP socket and SSH stream bidirectionally: `socket.pipe(stream).pipe(socket)`
+   - On close (either end): destroy the other, decrement `activeConnections`, notify UI
+
+### Remote Port Forwarding
+
+**`setupRemoteForward(tunnel)`** — Implements `ssh -R remotePort:localhost:localPort`
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│ Remote Client│ ──TCP──▶│ SSH Server   │──SSH────▶│ Local Machine│
+│ connects to  │         │ :remotePort  │forwardIn │ :localPort   │
+│ server:      │         │ (0.0.0.0)    │         │ (127.0.0.1)  │
+│ remotePort   │         └──────────────┘         └──────────────┘
+└──────────────┘
+```
+
+Implementation:
+1. `sshClient.forwardIn('0.0.0.0', remotePort)` — asks SSH server to bind the port
+2. Listen for `'tcp connection'` events on the SSH client
+3. On each incoming remote connection:
+   - `accept()` the SSH stream
+   - `net.connect(localPort, '127.0.0.1')` — open local TCP connection
+   - Pipe bidirectionally: `socket.pipe(stream).pipe(socket)`
+   - Track `activeConnections` with increment/decrement on connect/close
+
+No local `net.Server` is needed — the SSH server handles the listening.
+
+### Dynamic SOCKS5 Forwarding
+
+**`setupDynamicForward(tunnel)`** — Implements `ssh -D localPort`
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│ Local App    │ SOCKS5  │ net.Server   │──SSH────▶│ Any          │
+│ (browser,    │ ──────▶ │ :localPort   │forwardOut│ Destination  │
+│  curl, etc)  │         │ SOCKS5 proxy │         │              │
+└──────────────┘         └──────────────┘         └──────────────┘
+```
+
+Implementation:
+1. `net.createServer()` listening on `127.0.0.1:localPort`
+2. On each incoming connection, implements the SOCKS5 handshake:
+   - **Greeting**: Verify SOCKS5 version byte (`0x05`), respond with no-auth-required (`0x05, 0x00`)
+   - **Request**: Parse CONNECT request (`0x05, 0x01`), extract destination address:
+     - `0x01` — IPv4: 4 bytes → dotted decimal
+     - `0x03` — Domain: length-prefixed string
+     - `0x04` — IPv6: 16 bytes → colon-hex
+   - Extract destination port (2 bytes, big-endian)
+3. Call `sshClient.forwardOut('127.0.0.1', localPort, destHost, destPort)`
+4. On success: send SOCKS5 success response (`0x05, 0x00, ...`), pipe bidirectionally
+5. On error: send SOCKS5 failure response, destroy socket
+
+This creates a fully functional SOCKS5 proxy. Applications can use it by configuring `socks5://127.0.0.1:localPort` as their proxy.
+
+### Pause and Resume
+
+**Pause** (`pauseTunnel`):
+- For local/dynamic: closes the `net.Server` (stops accepting new connections)
+- For remote: calls `sshClient.unforwardIn()` (asks SSH server to stop listening)
+- Sets `server = null`, `activeConnections = 0`, `status = 'paused'`
+- The SSH connection stays alive — no re-authentication needed on resume
+
+**Resume** (`resumeTunnel`):
+- Calls `setupForwarding(tunnel)` again — re-creates the local server or re-binds the remote port
+- Sets `status = 'active'`
+
+This design enables quick toggling without the overhead of SSH reconnection.
+
+### Tunnel IPC Handlers
+
+**`src/main/tunnel/tunnel-ipc-handlers.ts`**
+
+Registers all tunnel-related `ipcMain.handle` handlers:
+
+| Channel | Handler |
+|---------|---------|
+| `tunnel:parse-ssh-config` | Delegates to `parseSshConfig()` (shared with SFTP) |
+| `tunnel:create` | `tunnelManager.createTunnel(config, windowId)` |
+| `tunnel:destroy` | `tunnelManager.destroyTunnel(id)` |
+| `tunnel:pause` | `tunnelManager.pauseTunnel(id)` |
+| `tunnel:resume` | `tunnelManager.resumeTunnel(id)` |
+| `tunnel:list` | `tunnelManager.listTunnels()` + `setManagerWindow(windowId)` |
+| `tunnel:window-new` | `windowManager.createTunnelWindow()` |
+
+The `LIST` handler also calls `setManagerWindow(windowId)` so the backend knows which window to push status updates to. This is called on every `listTunnels()` invocation (i.e., every time the manager window mounts).
+
+### Tunnel Renderer Components
+
+| Component | Purpose |
+|-----------|---------|
+| `TunnelManager` | Root: toolbar, tunnel table, auth dialog subscriptions. On mount: calls `listTunnels()` to hydrate, subscribes to `onStatusUpdate` for live updates. Reuses `HostKeyDialog` and `PasswordDialog` from SFTP. |
+| `TunnelTable` | Table with columns: Type (L/R/D badge), Host, SSH Port, Local Port, Remote (host:port or `*`), Status (colored badge), Connections (count), Actions (Pause/Resume + Destroy). Empty state when no tunnels. |
+| `AddTunnelDialog` | Overlay form: SSH config host picker, manual connection fields, tunnel type toggle (Local/Remote/Dynamic), port configuration fields that change based on type, visual `TunnelDiagram`, Start button. |
+| `TunnelDiagram` | CSS-based visual topology diagram that updates reactively as the user fills in fields. Three layouts for local, remote, and dynamic, showing data flow direction with labeled boxes and arrows. |
+
+**Component reuse**: `HostKeyDialog` and `PasswordDialog` are imported directly from `components/SftpBrowser/` — no duplication. They use the same CSS classes (`.sftp-dialog-overlay`, `.sftp-dialog`, `.sftp-btn`). The tunnel manager also reuses `.sftp-btn` and `.sftp-dialog` styles for its own dialogs.
+
+### Tunnel Store
+
+**`store/tunnel.ts`** — Standalone Zustand store (separate from both the main terminal store and the SFTP store):
+
+```
+State:
+  tunnels: TunnelInfo[]         — all known tunnels
+  showAddDialog: boolean
+  hostKeyInfo: HostKeyInfo | null
+  showPasswordDialog: boolean
+  loading: boolean
+
+Actions:
+  setTunnels(tunnels)           — replace entire list (on hydrate)
+  updateTunnel(info)            — upsert by ID (on status push)
+  removeTunnel(id)              — filter out (on destroy)
+  setShowAddDialog / setHostKeyInfo / setShowPasswordDialog / setLoading
+```
+
+The store is intentionally simple — tunnels are authoritative in the main process. The renderer store is a cache that's kept in sync via `listTunnels()` on mount and `onStatusUpdate` push events.
+
+### Lifecycle and Persistence
+
+```
+App starts → tunnelManager singleton created (empty)
+      │
+User opens Tunnel Manager window (Cmd+Shift+F)
+      │
+      ▼
+  createTunnelWindow() → single-instance check
+      │                   (if already open, focus existing)
+      ▼
+  TunnelManager.tsx mounts → listTunnels() → hydrate store
+                           → subscribe to onStatusUpdate
+      │
+User creates tunnel → createTunnel(config)
+      │
+      ▼
+  SSH connect → auth flow → setupForwarding → status: active
+      │
+User closes Tunnel Manager window
+      │
+      ▼
+  Tunnels continue running (owned by main process singleton)
+  managerWindowId cleared on next notifyStatusUpdate() null check
+      │
+User re-opens Tunnel Manager → listTunnels() → shows all tunnels
+      │
+User quits app (Cmd+Q)
+      │
+      ▼
+  app.on('before-quit') → tunnelManager.destroyAll()
+      │
+      ▼
+  For each tunnel:
+    server.close()    — stop accepting connections
+    sshClient.end()   — graceful SSH disconnect
+    tunnels.delete()
+```
+
+---
+
 ## IPC Channel Reference
 
 ### PTY Channels (`src/shared/ipc-channels.ts`)
@@ -1033,6 +1366,23 @@ Tracks: connection state, local/remote file listings, selection state, clipboard
 | `sftp:password-prompt` | M→R | Password authentication prompt |
 | `sftp:password-response` | R→M | Password response |
 | `sftp:window-new` | R→M | Open new SFTP window |
+
+### Tunnel Channels (`src/shared/tunnel-ipc-channels.ts`)
+
+| Channel | Direction | Purpose |
+|---------|-----------|---------|
+| `tunnel:parse-ssh-config` | R→M | Parse ~/.ssh/config |
+| `tunnel:create` | R→M | Create and start a new tunnel |
+| `tunnel:destroy` | R→M | Destroy a tunnel |
+| `tunnel:pause` | R→M | Pause a tunnel (stop listener, keep SSH) |
+| `tunnel:resume` | R→M | Resume a paused tunnel |
+| `tunnel:list` | R→M | List all tunnels + register window for push |
+| `tunnel:status-update` | M→R | Tunnel status/connection count changed |
+| `tunnel:host-key-verify` | M→R | Host key verification prompt |
+| `tunnel:host-key-response` | R→M | Host key accept/reject |
+| `tunnel:password-prompt` | M→R | Password authentication prompt |
+| `tunnel:password-response` | R→M | Password response |
+| `tunnel:window-new` | R→M | Open new tunnel manager window |
 
 ### Menu Channels (inline strings)
 
@@ -1185,6 +1535,54 @@ User opens SFTP Browser (Cmd+Shift+S)
   TransferProgressBar renders progress
 ```
 
+### Tunnel Create and Forward Flow
+
+```
+User opens Port Forwarding Manager (Cmd+Shift+F)
+      │
+      ▼
+  menu.ts: windowManager.createTunnelWindow()
+      │
+      ▼
+  New BrowserWindow with ?tunnel=true (single-instance)
+      │
+      ▼
+  App.tsx: isTunnelManagerWindow() → return <TunnelManager />
+      │
+      ├── listTunnels() → hydrate store with existing tunnels
+      ├── subscribe to onStatusUpdate
+      │
+      ▼ (User clicks Add Tunnel)
+  AddTunnelDialog: fills in SSH details + tunnel type + ports
+      │
+      ├── TunnelDiagram updates reactively
+      │
+      ▼ (User clicks Start Tunnel)
+  tunnelAPI.createTunnel(config)
+      │
+      ▼ (ipcMain.handle)
+  TunnelManager.createTunnel(config, windowId)
+      │
+      ├── new ssh2.Client()
+      │
+      ├── Host key verification (IPC round-trip):
+      │   Main → send HOST_KEY_VERIFY → Renderer shows HostKeyDialog
+      │   User clicks Accept → Renderer sends HOST_KEY_RESPONSE → Main resolves
+      │
+      ├── Password prompt (IPC round-trip, if needed):
+      │   Main → send PASSWORD_PROMPT → Renderer shows PasswordDialog
+      │   User enters password → Renderer sends PASSWORD_RESPONSE → Main resolves
+      │
+      ├── sshClient.connect() → on 'ready'
+      │
+      ├── setupForwarding():
+      │   ├── Local:   net.createServer(:localPort) → forwardOut → remoteHost:remotePort
+      │   ├── Remote:  forwardIn(remotePort) → tcp connection → net.connect(:localPort)
+      │   └── Dynamic: net.createServer(:localPort) → SOCKS5 → forwardOut → destination
+      │
+      └── status: active → notifyStatusUpdate → UI updates via onStatusUpdate
+```
+
 ---
 
 ## Shared Types
@@ -1233,6 +1631,13 @@ The `SplitNode` type is the core data structure for pane layout. It forms a bina
 - `TransferProgress` — live transfer status (bytes, percentage, speed)
 - `HostKeyInfo` — SSH host key for verification dialog
 
+### `src/shared/tunnel-types.ts`
+
+- `TunnelType` — `'local' | 'remote' | 'dynamic'`
+- `TunnelStatus` — `'connecting' | 'active' | 'paused' | 'error'`
+- `TunnelConfig` — SSH connection parameters (hostname, port, username, identityFile) + tunnel parameters (type, localPort, remoteHost, remotePort)
+- `TunnelInfo` — Full tunnel state sent to renderer (id, config, status, error, activeConnections)
+
 ### `src/shared/constants.ts`
 
 ```typescript
@@ -1273,6 +1678,7 @@ tests/
 │   ├── local-file-service.spec.ts
 │   ├── ssh-config-parser.spec.ts
 │   ├── rsync-transfer-service.spec.ts
+│   ├── tunnel-manager.spec.ts
 │   ├── store-panes.spec.ts
 │   └── store-tabs.spec.ts
 └── e2e/                     # Playwright E2E tests
@@ -1309,10 +1715,15 @@ tests/
 - Terminal view (`.terminal-view`, `.terminal-view--active`)
 - Tmux gateway overlay (`.tmux-gateway`)
 - SFTP browser (`.sftp-browser`, `.sftp-file-browser`, `.sftp-pane`)
-- SFTP dialogs (`.sftp-dialog`, `.sftp-dialog-overlay`)
+- SFTP dialogs (`.sftp-dialog`, `.sftp-dialog-overlay`) — shared with Tunnel Manager
 - SFTP context menu (`.sftp-context-menu`)
 - Transfer progress (`.sftp-transfer`)
-- Buttons (`.sftp-btn`, `.sftp-btn--primary`, `.sftp-btn--secondary`)
+- Buttons (`.sftp-btn`, `.sftp-btn--primary`, `.sftp-btn--secondary`) — shared with Tunnel Manager
+- Tunnel manager (`.tunnel-app`, `.tunnel-toolbar`, `.tunnel-content`)
+- Tunnel table (`.tunnel-table`, `.tunnel-table__row`, `.tunnel-table__col--*`)
+- Tunnel badges (`.tunnel-type-badge--local/remote/dynamic`, `.tunnel-status--active/paused/error`)
+- Tunnel diagram (`.tunnel-diagram`, `.tunnel-diagram__box--local/server/remote`, `.tunnel-diagram__arrow`)
+- Tunnel controls (`.tunnel-action-btn`, `.tunnel-type-toggle`)
 - Status bar (`.statusbar`)
 
 **Z-index layering**:

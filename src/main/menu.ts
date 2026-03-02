@@ -50,6 +50,14 @@ export function buildMenu(): void {
             windowManager.createSftpWindow()
           }
         },
+        {
+          id: 'port-forwarding',
+          label: 'Port Forwarding',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => {
+            windowManager.createTunnelWindow()
+          }
+        },
         { type: 'separator' },
         {
           id: 'split-vertical',

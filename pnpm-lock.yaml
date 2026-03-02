@@ -41,6 +41,9 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      ssh2:
+        specifier: ^1.17.0
+        version: 1.17.0
       ssh2-sftp-client:
         specifier: ^12.0.1
         version: 12.0.1
@@ -60,6 +63,9 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.5
         version: 18.3.7(@types/react@18.3.28)
+      '@types/ssh2':
+        specifier: ^1.15.5
+        version: 1.15.5
       '@types/ssh2-sftp-client':
         specifier: ^9.0.6
         version: 9.0.6

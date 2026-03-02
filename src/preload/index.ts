@@ -2,11 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import { TMUX_IPC } from '../shared/tmux-ipc-channels'
 import { SFTP_IPC } from '../shared/sftp-ipc-channels'
+import { TUNNEL_IPC } from '../shared/tunnel-ipc-channels'
 import type { TerminalAPI } from './api'
 import type { SftpAPI } from './sftp-api'
+import type { TunnelAPI } from './tunnel-api'
 import type { TmuxSessionInfo, TmuxWindowInfo } from '../shared/tmux-types'
 import type { SplitNode } from '../shared/types'
 import type { TransferProgress, HostKeyInfo } from '../shared/sftp-types'
+import type { TunnelInfo } from '../shared/tunnel-types'
 
 const api: TerminalAPI = {
   createPty: (cols?: number, rows?: number) =>
@@ -234,3 +237,36 @@ const sftpApi: SftpAPI = {
 }
 
 contextBridge.exposeInMainWorld('sftpAPI', sftpApi)
+
+const tunnelApi: TunnelAPI = {
+  parseSshConfig: () => ipcRenderer.invoke(TUNNEL_IPC.PARSE_SSH_CONFIG),
+  createTunnel: (config) => ipcRenderer.invoke(TUNNEL_IPC.CREATE, config),
+  destroyTunnel: (id) => ipcRenderer.invoke(TUNNEL_IPC.DESTROY, id),
+  pauseTunnel: (id) => ipcRenderer.invoke(TUNNEL_IPC.PAUSE, id),
+  resumeTunnel: (id) => ipcRenderer.invoke(TUNNEL_IPC.RESUME, id),
+  listTunnels: () => ipcRenderer.invoke(TUNNEL_IPC.LIST),
+
+  onStatusUpdate: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: TunnelInfo) => callback(info)
+    ipcRenderer.on(TUNNEL_IPC.STATUS_UPDATE, handler)
+    return () => ipcRenderer.removeListener(TUNNEL_IPC.STATUS_UPDATE, handler)
+  },
+
+  onHostKeyVerify: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: HostKeyInfo) => callback(info)
+    ipcRenderer.on(TUNNEL_IPC.HOST_KEY_VERIFY, handler)
+    return () => ipcRenderer.removeListener(TUNNEL_IPC.HOST_KEY_VERIFY, handler)
+  },
+  respondHostKey: (accepted) => ipcRenderer.send(TUNNEL_IPC.HOST_KEY_RESPONSE, accepted),
+
+  onPasswordPrompt: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(TUNNEL_IPC.PASSWORD_PROMPT, handler)
+    return () => ipcRenderer.removeListener(TUNNEL_IPC.PASSWORD_PROMPT, handler)
+  },
+  respondPassword: (password) => ipcRenderer.send(TUNNEL_IPC.PASSWORD_RESPONSE, password),
+
+  newTunnelWindow: () => ipcRenderer.send(TUNNEL_IPC.WINDOW_NEW)
+}
+
+contextBridge.exposeInMainWorld('tunnelAPI', tunnelApi)
