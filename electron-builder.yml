@@ -5,9 +5,20 @@ directories:
   output: dist
 files:
   - out/**/*
-  - "!node_modules/**/*"
 asarUnpack:
   - "**/*.node"
+  - "node_modules/thread-stream/**"
+  - "node_modules/real-require/**"
+  - "node_modules/pino/**"
+  - "node_modules/@pinojs/**"
+  - "node_modules/pino-abstract-transport/**"
+  - "node_modules/pino-std-serializers/**"
+  - "node_modules/sonic-boom/**"
+  - "node_modules/on-exit-leak-free/**"
+  - "node_modules/atomic-sleep/**"
+  - "node_modules/safe-stable-stringify/**"
+  - "node_modules/quick-format-unescaped/**"
+  - "node_modules/process-warning/**"
 mac:
   target:
     - dmg

@@ -87,7 +87,7 @@ This is the sixth attempt starting from scratch (hence "muxterm6"). All previous
 git clone https://github.com/anirban-ghosh/muxterm6.git
 cd muxterm6
 
-# Install dependencies
+# Install dependencies (see macOS note below)
 pnpm install
 
 # Build and run
@@ -98,7 +98,7 @@ pnpm start
 ### Quick start — development
 
 ```bash
-# Install dependencies
+# Install dependencies (see macOS note below)
 pnpm install
 
 # Start in development mode (hot reload)
@@ -113,9 +113,57 @@ pnpm test:watch
 # Build for production
 pnpm build
 
-# Package for distribution
+# Package for distribution (see macOS note below)
 pnpm dist
 ```
+
+### macOS build notes
+
+**C++ headers workaround**
+
+On macOS, the Command Line Tools installation may have an incomplete set of C++ standard library headers, causing `node-pty` (a native addon) to fail to compile during `pnpm install` with an error like:
+
+```
+fatal error: 'functional' file not found
+```
+
+Work around this by pointing the compiler at the full headers in the active SDK:
+
+```bash
+export CXXFLAGS="-I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1"
+
+pnpm install
+pnpm build
+```
+
+Set the same `CXXFLAGS` when running `pnpm dist` (see below).
+
+**`cpu-features` pre-build step (required before `pnpm dist`)**
+
+`ssh2` depends on `cpu-features`, a native addon whose build script is blocked by pnpm's `onlyBuiltDependencies` allowlist. As a result, the file `buildcheck.gypi` that the addon needs is never generated automatically, and `pnpm dist` will fail with:
+
+```
+gyp: buildcheck.gypi not found
+```
+
+Generate it manually once after `pnpm install` (repeat this step any time `node_modules` is recreated):
+
+```bash
+node node_modules/.pnpm/cpu-features@0.0.10/node_modules/cpu-features/buildcheck.js \
+  > node_modules/.pnpm/cpu-features@0.0.10/node_modules/cpu-features/buildcheck.gypi
+```
+
+**Packaging for distribution**
+
+Run `pnpm dist` with the `CXXFLAGS` set so that the electron-builder native rebuild step succeeds:
+
+```bash
+CXXFLAGS="-I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1" pnpm dist
+```
+
+The packaged output is written to the `dist/` directory (`.dmg` + `.zip` on macOS, `.AppImage` + `.deb` on Linux).
+
+> **Note:** The repository includes an `.npmrc` file that sets `shamefully-hoist=true`. This is required so that pnpm lays out `node_modules` in a flat structure that electron-builder can package correctly.
 
 ### Architecture
 
