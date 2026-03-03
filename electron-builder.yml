@@ -20,14 +20,21 @@ asarUnpack:
   - "node_modules/quick-format-unescaped/**"
   - "node_modules/process-warning/**"
 mac:
+  icon: resources/icons/mac/icon.icns
   target:
     - dmg
     - zip
   artifactName: ${name}-${version}-${arch}.${ext}
   entitlementsInherit: resources/entitlements.mac.plist
 linux:
+  icon: resources/icons/png
   target:
     - AppImage
     - deb
   artifactName: ${name}-${version}-${arch}.${ext}
   category: TerminalEmulator
+win:
+  icon: resources/icons/win/icon.ico
+  target:
+    - nsis
+  artifactName: ${name}-${version}-${arch}.${ext}
