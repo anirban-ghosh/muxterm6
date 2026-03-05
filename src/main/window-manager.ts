@@ -3,8 +3,16 @@ import { join } from 'path'
 import { ptyManager } from './pty-manager'
 import logger from './logger'
 
+const isMac = process.platform === 'darwin'
+
 class WindowManager {
   private windows = new Set<BrowserWindow>()
+
+  toggleMenuBar(win: BrowserWindow): void {
+    const visible = !win.isMenuBarVisible()
+    win.setMenuBarVisibility(visible)
+    win.setAutoHideMenuBar(!visible)
+  }
 
   createWindow(): BrowserWindow {
     const win = new BrowserWindow({
@@ -12,9 +20,9 @@ class WindowManager {
       height: 600,
       minWidth: 400,
       minHeight: 300,
-      titleBarStyle: 'hidden',
+      titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+      vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
       webPreferences: {
@@ -57,9 +65,9 @@ class WindowManager {
       height: 600,
       minWidth: 400,
       minHeight: 300,
-      titleBarStyle: 'hidden',
+      titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+      vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
       webPreferences: {
@@ -102,9 +110,9 @@ class WindowManager {
       height: 700,
       minWidth: 700,
       minHeight: 400,
-      titleBarStyle: 'hidden',
+      titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+      vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
       webPreferences: {
@@ -155,9 +163,9 @@ class WindowManager {
       height: 500,
       minWidth: 600,
       minHeight: 350,
-      titleBarStyle: 'hidden',
+      titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+      vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
       webPreferences: {

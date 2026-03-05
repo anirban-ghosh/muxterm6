@@ -2,6 +2,11 @@
   "name": "muxterm",
   "version": "0.1.0",
   "description": "Modern terminal emulator",
+  "homepage": "https://github.com/anirban-ghosh/muxterm6",
+  "author": {
+    "name": "anirban-ghosh",
+    "email": "noreply@github.com"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

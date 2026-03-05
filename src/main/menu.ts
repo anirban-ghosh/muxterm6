@@ -29,7 +29,7 @@ export function buildMenu(): void {
       submenu: [
         {
           label: 'New Tab',
-          accelerator: 'CmdOrCtrl+T',
+          accelerator: isMac ? 'Cmd+T' : 'Ctrl+Shift+T',
           click: (_, window) => {
             if (window) window.webContents.send('menu:new-tab')
           }
@@ -37,7 +37,7 @@ export function buildMenu(): void {
         {
           id: 'new-window',
           label: 'New Window',
-          accelerator: 'CmdOrCtrl+N',
+          accelerator: isMac ? 'Cmd+N' : 'Ctrl+Shift+N',
           click: () => {
             windowManager.createWindow()
           }
@@ -62,7 +62,7 @@ export function buildMenu(): void {
         {
           id: 'split-vertical',
           label: 'Split Vertically',
-          accelerator: 'CmdOrCtrl+D',
+          accelerator: isMac ? 'Cmd+D' : 'Ctrl+Shift+E',
           click: (_, window) => {
             if (window) window.webContents.send('menu:split-vertical')
           }
@@ -77,7 +77,7 @@ export function buildMenu(): void {
         { type: 'separator' },
         {
           label: 'Close Tab',
-          accelerator: 'CmdOrCtrl+W',
+          accelerator: isMac ? 'Cmd+W' : 'Ctrl+Shift+W',
           click: (_, window) => {
             if (window) window.webContents.send('menu:close-tab')
           }
@@ -85,14 +85,14 @@ export function buildMenu(): void {
         { type: 'separator' },
         {
           label: 'Select Next Tab',
-          accelerator: 'Ctrl+Tab',
+          accelerator: isMac ? 'Ctrl+Tab' : 'Ctrl+PageDown',
           click: (_, window) => {
             if (window) window.webContents.send('menu:next-tab')
           }
         },
         {
           label: 'Select Previous Tab',
-          accelerator: 'Ctrl+Shift+Tab',
+          accelerator: isMac ? 'Ctrl+Shift+Tab' : 'Ctrl+PageUp',
           click: (_, window) => {
             if (window) window.webContents.send('menu:prev-tab')
           }
@@ -118,7 +118,19 @@ export function buildMenu(): void {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'togglefullscreen' },
+        ...(!isMac
+          ? [
+              { type: 'separator' as const },
+              {
+                label: 'Toggle Menu Bar',
+                accelerator: 'Ctrl+Shift+M',
+                click: (_, window) => {
+                  if (window) windowManager.toggleMenuBar(window)
+                }
+              }
+            ]
+          : [])
       ]
     },
     {
