@@ -4,9 +4,12 @@ import { ptyManager } from './pty-manager'
 import logger from './logger'
 
 const isMac = process.platform === 'darwin'
-const linuxIcon = !isMac
-  ? nativeImage.createFromPath(join(process.resourcesPath, 'icon.png'))
-  : undefined
+
+function getLinuxIcon(): Electron.NativeImage | undefined {
+  if (isMac) return undefined
+  const icon = nativeImage.createFromPath(join(process.resourcesPath, 'icon.png'))
+  return icon.isEmpty() ? undefined : icon
+}
 
 class WindowManager {
   private windows = new Set<BrowserWindow>()
@@ -25,7 +28,7 @@ class WindowManager {
       minHeight: 300,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      icon: linuxIcon,
+      icon: getLinuxIcon(),
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
@@ -71,7 +74,7 @@ class WindowManager {
       minHeight: 300,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      icon: linuxIcon,
+      icon: getLinuxIcon(),
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
@@ -117,7 +120,7 @@ class WindowManager {
       minHeight: 400,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      icon: linuxIcon,
+      icon: getLinuxIcon(),
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
@@ -171,7 +174,7 @@ class WindowManager {
       minHeight: 350,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
-      icon: linuxIcon,
+      icon: getLinuxIcon(),
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
