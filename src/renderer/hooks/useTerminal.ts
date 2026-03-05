@@ -195,10 +195,22 @@ export function useTerminal(options: UseTerminalOptions) {
       // WebGL addon disabled — causes "dimensions" errors that corrupt
       // xterm.js renderer state. Canvas/DOM renderer works correctly.
 
-      // Intercept Ctrl+Tab / Ctrl+Shift+Tab so they bubble up to Electron's
-      // menu accelerator for tab switching instead of being consumed by xterm.js.
+      // Intercept keys used as Electron menu accelerators so they bubble up
+      // instead of being consumed by xterm.js and sent to the PTY.
       terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.ctrlKey && e.key === 'Tab') return false
+        if (e.ctrlKey && (e.key === 'PageUp' || e.key === 'PageDown')) return false
+        if (e.ctrlKey && e.shiftKey) {
+          switch (e.key) {
+            case 'T': case 'N': case 'W':  // new tab, new window, close tab
+            case 'D':                       // split horizontal
+            case 'E':                       // split vertical
+            case 'S':                       // SFTP browser
+            case 'F':                       // port forwarding
+            case 'M':                       // toggle menu bar
+              return false
+          }
+        }
         return true
       })
 
