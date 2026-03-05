@@ -26,6 +26,9 @@ mac:
     - zip
   artifactName: ${name}-${version}-${arch}.${ext}
   entitlementsInherit: resources/entitlements.mac.plist
+extraResources:
+  - from: resources/icons/png/512x512.png
+    to: icon.png
 linux:
   icon: resources/icons/png
   target:

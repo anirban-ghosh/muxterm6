@@ -1,9 +1,12 @@
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, shell, nativeImage } from 'electron'
 import { join } from 'path'
 import { ptyManager } from './pty-manager'
 import logger from './logger'
 
 const isMac = process.platform === 'darwin'
+const linuxIcon = !isMac
+  ? nativeImage.createFromPath(join(process.resourcesPath, 'icon.png'))
+  : undefined
 
 class WindowManager {
   private windows = new Set<BrowserWindow>()
@@ -22,6 +25,7 @@ class WindowManager {
       minHeight: 300,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
+      icon: linuxIcon,
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
@@ -67,6 +71,7 @@ class WindowManager {
       minHeight: 300,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
+      icon: linuxIcon,
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
@@ -112,6 +117,7 @@ class WindowManager {
       minHeight: 400,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
+      icon: linuxIcon,
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
@@ -165,6 +171,7 @@ class WindowManager {
       minHeight: 350,
       titleBarStyle: isMac ? 'hidden' : 'default',
       trafficLightPosition: { x: 12, y: 12 },
+      icon: linuxIcon,
       vibrancy: isMac ? 'under-window' : undefined,
       backgroundColor: '#0f0f1a',
       show: false,
