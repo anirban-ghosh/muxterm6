@@ -31,6 +31,8 @@ extraResources:
     to: icon.png
 linux:
   icon: resources/icons/png
+  executableArgs:
+    - --no-sandbox
   target:
     - AppImage
     - deb
