@@ -62,7 +62,7 @@ export function buildMenu(): void {
         {
           id: 'split-vertical',
           label: 'Split Vertically',
-          accelerator: 'CmdOrCtrl+D',
+          accelerator: isMac ? 'Cmd+D' : 'Ctrl+Shift+E',
           click: (_, window) => {
             if (window) window.webContents.send('menu:split-vertical')
           }
@@ -118,7 +118,19 @@ export function buildMenu(): void {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'togglefullscreen' },
+        ...(!isMac
+          ? [
+              { type: 'separator' as const },
+              {
+                label: 'Toggle Menu Bar',
+                accelerator: 'Ctrl+Shift+M',
+                click: (_, window) => {
+                  if (window) windowManager.toggleMenuBar(window)
+                }
+              }
+            ]
+          : [])
       ]
     },
     {
